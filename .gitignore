@@ -1,0 +1,14 @@
+node_modules
+.DS_Store
+dist
+dist-ssr
+*.local
+.dev.vars.*
+.tanstack
+.wrangler
+.output
+.vinxi
+__unconfig*
+/docs/
+/AGENTS.md
+/AGENTS.zh-CN.md

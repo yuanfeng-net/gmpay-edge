@@ -1,0 +1,6 @@
+{
+	"data": {
+		"order_id": "ok-order",
+		"pay_url": "https://pay.example/order"
+	}
+}

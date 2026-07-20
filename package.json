@@ -1,0 +1,134 @@
+{
+  "name": "gmpay-edge",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "cloudflare": {
+    "label": "GMPay Edge",
+    "products": ["Workers", "D1", "KV", "R2", "Queues"],
+    "categories": ["storage"],
+    "publish": false,
+    "bindings": {
+      "DB": {
+        "description": "D1 stores authentication, payment, Webhook, Telegram, and system data. Remote migrations run during deployment."
+      },
+      "FILES": {
+        "description": "Private R2 storage for uploads, review evidence, and exports."
+      },
+      "CACHE": {
+        "description": "KV storage for short-lived RBAC and public configuration caches; security rate limits remain D1-authoritative."
+      },
+      "WEBHOOK_QUEUE": {
+        "description": "Queue for asynchronous merchant Webhook delivery."
+      },
+      "PAYMENT_QUEUE": {
+        "description": "Queue for asynchronous payment scanning and durable provider-event verification."
+      }
+    }
+  },
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "scripts": {
+    "dev": "bun run db:migrate:local && vite dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "bun run scripts/build.ts",
+    "bundle:report": "bun run scripts/bundle-report.ts",
+    "preview": "vite preview",
+    "predeploy": "bun run scripts/build.ts --remote",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "test": "vitest run",
+    "format": "biome format",
+    "lint": "biome lint",
+    "check": "biome check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:migrate:local": "wrangler d1 migrations apply gmpay-edge --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:push": "drizzle-kit push",
+    "db:pull": "drizzle-kit pull",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.7",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@gsap/react": "^2.1.2",
+    "@noble/hashes": "^2.2.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/match-sorter-utils": "latest",
+    "@tanstack/react-devtools": "latest",
+    "@tanstack/react-form": "^1.33.2",
+    "@tanstack/react-query": "latest",
+    "@tanstack/react-query-devtools": "latest",
+    "@tanstack/react-router": "latest",
+    "@tanstack/react-router-devtools": "latest",
+    "@tanstack/react-router-ssr-query": "latest",
+    "@tanstack/react-start": "latest",
+    "@tanstack/react-store": "latest",
+    "@tanstack/react-table": "latest",
+    "@tanstack/store": "latest",
+    "better-auth": "^1.5.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.4.0",
+    "drizzle-orm": "^0.45.1",
+    "fzstd": "^0.1.1",
+    "grammy": "^1.44.0",
+    "gsap": "^3.15.0",
+    "lucide-react": "^1.23.0",
+    "qrcode.react": "^4.2.0",
+    "radix-ui": "^1.6.1",
+    "react": "^19.2.0",
+    "react-colorful": "^5.7.0",
+    "react-day-picker": "^10.0.1",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "recharts": "^3.9.2",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss": "^4.1.18",
+    "tw-animate-css": "^1.3.6",
+    "vaul": "^1.1.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@better-auth/utils": "0.4.2",
+    "@biomejs/biome": "2.4.5",
+    "@cloudflare/vite-plugin": "^1.42.4",
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@fontsource-variable/noto-sans": "^5.2.10",
+    "@fontsource-variable/nunito": "^5.2.7",
+    "@inlang/paraglide-js": "^2.13.1",
+    "@rolldown/plugin-babel": "^0.2.3",
+    "@tailwindcss/typography": "^0.5.16",
+    "@tanstack/devtools-vite": "latest",
+    "@tanstack/router-cli": "^1.132.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "dotenv": "^17.3.1",
+    "drizzle-kit": "^0.31.9",
+    "jsdom": "^28.1.0",
+    "miniflare": "latest",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5",
+    "wrangler": "latest",
+    "yaml": "^2.8.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
+  }
+}
