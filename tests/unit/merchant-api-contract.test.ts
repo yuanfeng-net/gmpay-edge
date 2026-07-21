@@ -56,6 +56,24 @@ describe("GMPay and EPay OpenAPI contract", () => {
 		expect((epay?.post as Operation).requestBody.content).toHaveProperty(
 			"application/x-www-form-urlencoded",
 		);
+
+		const mapi =
+			document.paths["/payments/epay/v1/order/create-transaction/mapi.php"];
+		expect(mapi).toHaveProperty("get");
+		expect(mapi).toHaveProperty("post");
+		expect((mapi?.get as Operation).responses["200"]).toMatchObject({
+			content: {
+				"application/json": {
+					schema: { $ref: "#/components/schemas/EpayCreateResponse" },
+				},
+			},
+		});
+		const epayQuery = document.paths[
+			"/payments/epay/v1/order/create-transaction/api.php"
+		]?.get as Operation;
+		expect(
+			epayQuery.parameters?.map((parameter) => parameter.name).sort(),
+		).toEqual(["act", "out_trade_no", "pid", "sign", "sign_type", "trade_no"]);
 	});
 
 	it("uses readable GMPay Edge states and never declares a default chain", async () => {

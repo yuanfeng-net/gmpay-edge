@@ -280,7 +280,7 @@ export async function handleGmpayCreateRequest(
 }
 
 export function logMerchantApiFailure(
-	operation: "gmpay.create" | "gmpay.query" | "epay.create",
+	operation: "gmpay.create" | "gmpay.query" | "epay.create" | "epay.query",
 	requestId: string,
 ) {
 	console.error("merchant_api_failure", { operation, requestId });

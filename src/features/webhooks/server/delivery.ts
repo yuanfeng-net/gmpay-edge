@@ -76,8 +76,11 @@ export async function deliverWebhook(
 			signal: AbortSignal.timeout(timeoutMs),
 		});
 		const excerpt = await readResponseExcerpt(response, 512);
+		const acknowledgement = excerpt.trim().toLowerCase();
 		const success =
-			response.status === 200 && excerpt.trim().toLowerCase() === "ok";
+			response.status === 200 &&
+			(acknowledgement === "ok" ||
+				(message.protocol === "epay" && acknowledgement === "success"));
 		const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
 		return {
 			success,

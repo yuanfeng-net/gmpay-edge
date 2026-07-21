@@ -15,6 +15,8 @@ export interface ApiOrder {
 	receivingMethodId?: string;
 	receiveAddress?: string;
 	notifyUrl?: string;
+	description?: string;
+	metadata?: Record<string, string>;
 }
 
 export type OrderSelector =
@@ -31,7 +33,7 @@ export async function getOrder(
 	const row = await db
 		.prepare(
 			`SELECT o.id, o.external_order_id, o.status, o.amount_minor, o.currency,
-			 o.currency_decimals, o.notify_url, o.expires_at,
+			 o.currency_decimals, o.notify_url, o.description, o.metadata, o.expires_at,
 			 ops.expected_amount_units, ops.decimals,
 			 COALESCE(ops.asset_code, a.code) AS code,
 			 COALESCE(ops.rail_code, a.rail_code) AS network,
@@ -57,8 +59,11 @@ export async function getOrder(
 			receiving_method_id: string | null;
 			target_value: string | null;
 			notify_url: string | null;
+			description: string | null;
+			metadata: string | null;
 		}>();
 	if (!row) return null;
+	const metadata = parseMetadata(row.metadata);
 	return {
 		orderId: row.id,
 		externalOrderId: row.external_order_id,
@@ -82,5 +87,26 @@ export async function getOrder(
 		checkoutUrl: `${new URL(requestUrl).origin}/checkout/${row.id}`,
 		expiresAt: new Date(row.expires_at).toISOString(),
 		...(row.notify_url ? { notifyUrl: row.notify_url } : {}),
+		...(row.description ? { description: row.description } : {}),
+		...(metadata ? { metadata } : {}),
 	};
+}
+
+function parseMetadata(value: string | null) {
+	if (!value) return undefined;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			return undefined;
+		const entries = Object.entries(parsed);
+		if (
+			!entries.every(
+				(entry): entry is [string, string] => typeof entry[1] === "string",
+			)
+		)
+			return undefined;
+		return Object.fromEntries(entries);
+	} catch {
+		return undefined;
+	}
 }

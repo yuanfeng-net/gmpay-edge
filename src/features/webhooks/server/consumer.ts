@@ -279,6 +279,7 @@ async function resolveWebhookDelivery(
 			name: row.description ?? row.external_order_id,
 			money: amount,
 			trade_status: epayTradeStatus(row.status),
+			...(metadata.epayParam ? { param: metadata.epayParam } : {}),
 		},
 	};
 }

@@ -84,6 +84,9 @@ paths:
         - { $ref: "#/components/parameters/EpayReturnUrl" }
         - { $ref: "#/components/parameters/EpayName" }
         - { $ref: "#/components/parameters/EpayType" }
+        - { $ref: "#/components/parameters/EpayParam" }
+        - { $ref: "#/components/parameters/EpayClientIp" }
+        - { $ref: "#/components/parameters/EpayDevice" }
         - { $ref: "#/components/parameters/EpaySign" }
         - { $ref: "#/components/parameters/EpaySignType" }
       responses:
@@ -118,6 +121,78 @@ paths:
         "500": { $ref: "#/components/responses/GatewayError" }
         "502": { $ref: "#/components/responses/GatewayError" }
         "503": { $ref: "#/components/responses/GatewayError" }
+  /payments/epay/v1/order/create-transaction/mapi.php:
+    get:
+      operationId: createEpayMApiTransactionByQuery
+      summary: Create an EPay transaction and return a Pro-compatible response
+      parameters:
+        - { $ref: "#/components/parameters/EpayPid" }
+        - { $ref: "#/components/parameters/EpayMoney" }
+        - { $ref: "#/components/parameters/EpayOrderNo" }
+        - { $ref: "#/components/parameters/EpayNotifyUrl" }
+        - { $ref: "#/components/parameters/EpayReturnUrl" }
+        - { $ref: "#/components/parameters/EpayName" }
+        - { $ref: "#/components/parameters/EpayType" }
+        - { $ref: "#/components/parameters/EpayParam" }
+        - { $ref: "#/components/parameters/EpayClientIp" }
+        - { $ref: "#/components/parameters/EpayDevice" }
+        - { $ref: "#/components/parameters/EpaySign" }
+        - { $ref: "#/components/parameters/EpaySignType" }
+      responses:
+        "200":
+          description: Transaction created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EpayCreateResponse" }
+        "400": { $ref: "#/components/responses/EpayError" }
+        "401": { $ref: "#/components/responses/EpayError" }
+        "429": { $ref: "#/components/responses/EpayError" }
+        "500": { $ref: "#/components/responses/EpayError" }
+        "502": { $ref: "#/components/responses/EpayError" }
+        "503": { $ref: "#/components/responses/EpayError" }
+    post:
+      operationId: createEpayMApiTransactionByForm
+      summary: Create an EPay transaction and return a Pro-compatible response
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/EpayCreateRequest" }
+      responses:
+        "200":
+          description: Transaction created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EpayCreateResponse" }
+        "400": { $ref: "#/components/responses/EpayError" }
+        "401": { $ref: "#/components/responses/EpayError" }
+        "429": { $ref: "#/components/responses/EpayError" }
+        "500": { $ref: "#/components/responses/EpayError" }
+        "502": { $ref: "#/components/responses/EpayError" }
+        "503": { $ref: "#/components/responses/EpayError" }
+  /payments/epay/v1/order/create-transaction/api.php:
+    get:
+      operationId: queryEpayTransaction
+      summary: Query an EPay transaction
+      description: Set act=order and sign the non-empty query fields with the merchant API secret. Plain-text keys are not accepted in URLs.
+      parameters:
+        - { name: act, in: query, required: true, schema: { const: order } }
+        - { name: pid, in: query, required: true, schema: { type: string } }
+        - { name: trade_no, in: query, required: false, schema: { type: string, maxLength: 128 } }
+        - { name: out_trade_no, in: query, required: false, schema: { type: string, maxLength: 128 } }
+        - { name: sign, in: query, required: true, schema: { type: string, pattern: "^[0-9a-f]{32}$" } }
+        - { name: sign_type, in: query, required: false, schema: { const: MD5 } }
+      responses:
+        "200":
+          description: EPay transaction status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EpayQueryResponse" }
+        "400": { $ref: "#/components/responses/EpayError" }
+        "401": { $ref: "#/components/responses/EpayError" }
+        "404": { $ref: "#/components/responses/EpayError" }
+        "429": { $ref: "#/components/responses/EpayError" }
+        "500": { $ref: "#/components/responses/EpayError" }
 components:
   parameters:
     EpayPid: { name: pid, in: query, required: true, schema: { type: string } }
@@ -126,7 +201,10 @@ components:
     EpayNotifyUrl: { name: notify_url, in: query, required: true, schema: { type: string, format: uri } }
     EpayReturnUrl: { name: return_url, in: query, required: false, schema: { type: string, format: uri } }
     EpayName: { name: name, in: query, required: false, schema: { type: string, maxLength: 500 } }
-    EpayType: { name: type, in: query, required: false, description: alipay creates a selectable order; asset.network selects a payment method., schema: { type: string } }
+    EpayType: { name: type, in: query, required: false, description: alipay keeps the existing selectable compatibility behavior; asset.network selects a payment method., schema: { type: string } }
+    EpayParam: { name: param, in: query, required: false, description: Opaque merchant context returned unchanged in notifications, redirects, and queries., schema: { type: string, maxLength: 500 } }
+    EpayClientIp: { name: clientip, in: query, required: false, schema: { type: string, maxLength: 64 } }
+    EpayDevice: { name: device, in: query, required: false, schema: { type: string, maxLength: 64 } }
     EpaySign: { name: sign, in: query, required: true, schema: { type: string, pattern: "^[0-9a-f]{32}$" } }
     EpaySignType: { name: sign_type, in: query, required: false, schema: { const: MD5 } }
   responses:
@@ -135,6 +213,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/GatewayEnvelope" }
+    EpayError:
+      description: EPay compatibility error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/EpayError" }
   schemas:
     OrderStatus:
       type: string
@@ -217,8 +300,42 @@ components:
         return_url: { type: string, format: uri }
         name: { type: string, maxLength: 500 }
         type: { type: string, description: alipay or asset.network }
+        param: { type: string, maxLength: 500 }
+        clientip: { type: string, maxLength: 64 }
+        device: { type: string, maxLength: 64 }
         sign: { type: string, pattern: "^[0-9a-f]{32}$" }
         sign_type: { const: MD5 }
+    EpayError:
+      type: object
+      required: [code, msg]
+      properties:
+        code: { type: integer, const: -1 }
+        msg: { type: string }
+    EpayCreateResponse:
+      type: object
+      required: [code, msg, trade_no, payurl, qrcode, img, param]
+      properties:
+        code: { type: integer, const: 1 }
+        msg: { type: string, const: success }
+        trade_no: { type: string }
+        payurl: { type: string, format: uri }
+        qrcode: { type: string, format: uri }
+        img: { type: string, format: uri }
+        param: { type: string }
+    EpayQueryResponse:
+      type: object
+      required: [code, msg, trade_no, out_trade_no, type, name, money, status, trade_status, param]
+      properties:
+        code: { type: integer, const: 1 }
+        msg: { type: string, const: success }
+        trade_no: { type: string }
+        out_trade_no: { type: string }
+        type: { type: string }
+        name: { type: string }
+        money: { type: string }
+        status: { type: integer, enum: [0, 1] }
+        trade_status: { type: string }
+        param: { type: string }
     GatewayEnvelope:
       type: object
       required: [status_code, message, data, request_id]

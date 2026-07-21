@@ -215,6 +215,18 @@ const merchantApiEntries = [
 		handlerName: "handleEpayCreateRequest",
 		authenticator: "authenticateEpayInput",
 	},
+	{
+		route: "src/routes/payments/epay/v1/order/create-transaction/mapi[.]php.ts",
+		handler: "src/features/orders/server/epay-adapter.ts",
+		handlerName: "handleEpayMApiRequest",
+		authenticator: "authenticateEpayInput",
+	},
+	{
+		route: "src/routes/payments/epay/v1/order/create-transaction/api[.]php.ts",
+		handler: "src/features/orders/server/epay-adapter.ts",
+		handlerName: "handleEpayQueryRequest",
+		authenticator: "authenticateGmpayParameters",
+	},
 ] as const;
 
 describe("server entry authorization coverage", () => {

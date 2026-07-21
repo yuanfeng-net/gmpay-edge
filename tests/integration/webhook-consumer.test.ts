@@ -203,7 +203,7 @@ describe("Webhook queue consumer on D1", () => {
 					  expires_at, version, created_at, updated_at)
 					 VALUES ('order-epay', 'epay-order', 'api-key', 'epay', 'paid', '1250',
 					  'CNY', 2, '0', 'Invoice', 'https://callback.example/epay',
-					  '{"integration":"epay","epayType":"usdt.tron"}', ?, 0, ?, ?)`,
+					  '{"integration":"epay","epayType":"usdt.tron","epayParam":"merchant-context"}', ?, 0, ?, ?)`,
 				)
 				.bind(now + 60_000, now, now),
 			db
@@ -234,6 +234,7 @@ describe("Webhook queue consumer on D1", () => {
 			name: "Invoice",
 			money: "12.5",
 			trade_status: "TRADE_SUCCESS",
+			param: "merchant-context",
 			sign_type: "MD5",
 		});
 		const signed = Object.fromEntries(url.searchParams);
@@ -246,6 +247,7 @@ describe("Webhook queue consumer on D1", () => {
 				"name",
 				"money",
 				"trade_status",
+				"param",
 				"sign",
 				"sign_type",
 			].sort(),

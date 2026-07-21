@@ -4,6 +4,7 @@ import { signGmpayParameters } from "#/features/api-keys/server/gmpay-signature"
 import {
 	authenticateEpayInput,
 	handleEpayCreateRequest,
+	handleEpayQueryRequest,
 } from "#/features/orders/server/epay-adapter";
 import { encryptSecret } from "#/lib/secrets";
 import {
@@ -36,7 +37,7 @@ describe("EPay compatibility HTTP handler", () => {
 				.bind(JSON.stringify(pepper), now, now),
 			db
 				.prepare(
-					"INSERT INTO api_keys (id, name, pid, secret_encrypted, scopes, created_at, updated_at) VALUES ('key', 'EPay', ?, ?, '[\"orders:create\"]', ?, ?)",
+					"INSERT INTO api_keys (id, name, pid, secret_encrypted, scopes, created_at, updated_at) VALUES ('key', 'EPay', ?, ?, '[\"orders:create\",\"orders:read\"]', ?, ?)",
 				)
 				.bind(pid, await encryptSecret(secret, pepper), now, now),
 		]);
@@ -57,6 +58,9 @@ describe("EPay compatibility HTTP handler", () => {
 			notify_url: "https://merchant.example/epay-notify",
 			return_url: "https://merchant.example/return",
 			type: "alipay",
+			param: `context-${method.toLowerCase()}`,
+			clientip: "203.0.113.10",
+			device: "mobile",
 		};
 		const signed = {
 			...parameters,
@@ -106,19 +110,110 @@ describe("EPay compatibility HTTP handler", () => {
 		const orderId = body.data.trade_id;
 		const order = await db
 			.prepare(
-				"SELECT api_protocol, payment_asset_id, metadata FROM orders WHERE id = ?",
+				"SELECT api_protocol, payment_asset_id, return_url, metadata FROM orders WHERE id = ?",
 			)
 			.bind(orderId)
 			.first<{
 				api_protocol: string;
 				payment_asset_id: string | null;
 				metadata: string;
+				return_url: string;
 			}>();
 		expect(order?.api_protocol).toBe("epay");
 		expect(order?.payment_asset_id).toBeNull();
+		expect(order?.return_url).toBe(
+			`https://merchant.example/return?param=context-${method.toLowerCase()}`,
+		);
 		expect(JSON.parse(order?.metadata ?? "{}")).toEqual({
 			integration: "epay",
 			epayType: "alipay",
+			epayParam: `context-${method.toLowerCase()}`,
+		});
+	});
+
+	it("returns Pro-compatible mapi data and returns param from order queries", async () => {
+		const parameters = {
+			pid,
+			money: "30.00",
+			out_trade_no: "EPAY-PRO-COMPAT",
+			notify_url: "https://merchant.example/epay-notify",
+			return_url: "https://merchant.example/return?source=plugin",
+			type: "alipay",
+			param: "opaque merchant context",
+			clientip: "203.0.113.20",
+			device: "pc",
+		};
+		const signed = {
+			...parameters,
+			sign: signGmpayParameters(
+				parameters,
+				secret,
+				new Set(["sign", "sign_type"]),
+			),
+			sign_type: "MD5",
+		};
+		const createResponse = await handleEpayCreateRequest(
+			new Request(
+				"https://pay.example/payments/epay/v1/order/create-transaction/mapi.php",
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/x-www-form-urlencoded",
+					},
+					body: new URLSearchParams(signed),
+				},
+			),
+			{ DB: db } as Env,
+			undefined,
+			"mapi",
+		);
+		expect(createResponse.status).toBe(200);
+		const created = await createResponse.json<{
+			code: number;
+			trade_no: string;
+			payurl: string;
+			qrcode: string;
+			img: string;
+			param: string;
+		}>();
+		expect(created).toMatchObject({
+			code: 1,
+			payurl: `https://pay.example/checkout/${created.trade_no}`,
+			qrcode: `https://pay.example/checkout/${created.trade_no}`,
+			img: `https://pay.example/checkout/${created.trade_no}`,
+			param: "opaque merchant context",
+		});
+
+		const queryParameters = {
+			act: "order",
+			pid,
+			out_trade_no: parameters.out_trade_no,
+		};
+		const query = {
+			...queryParameters,
+			sign: signGmpayParameters(
+				queryParameters,
+				secret,
+				new Set(["sign", "sign_type"]),
+			),
+			sign_type: "MD5",
+		};
+		const queryResponse = await handleEpayQueryRequest(
+			new Request(
+				`https://pay.example/payments/epay/v1/order/create-transaction/api.php?${new URLSearchParams(query)}`,
+			),
+			{ DB: db } as Env,
+		);
+		expect(queryResponse.status).toBe(200);
+		expect(await queryResponse.json()).toMatchObject({
+			code: 1,
+			trade_no: created.trade_no,
+			out_trade_no: "EPAY-PRO-COMPAT",
+			type: "alipay",
+			money: "30",
+			status: 0,
+			trade_status: "WAIT_BUYER_PAY",
+			param: "opaque merchant context",
 		});
 	});
 

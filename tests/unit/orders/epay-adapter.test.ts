@@ -16,6 +16,9 @@ describe("EPay compatibility adapter", () => {
 			return_url: "https://merchant.example/return",
 			name: "Invoice 1001",
 			type: "usdt.tron",
+			param: "merchant-context-1001",
+			clientip: "203.0.113.10",
+			device: "mobile",
 		};
 		const sign = signGmpayParameters(
 			parameters,
@@ -31,11 +34,16 @@ describe("EPay compatibility adapter", () => {
 			currency: "CNY",
 			paymentAsset: "USDT",
 			paymentNetwork: "tron",
-			metadata: { integration: "epay", epayType: "usdt.tron" },
+			returnUrl: "https://merchant.example/return?param=merchant-context-1001",
+			metadata: {
+				integration: "epay",
+				epayType: "usdt.tron",
+				epayParam: "merchant-context-1001",
+			},
 		});
 	});
 
-	it("creates a selectable order for alipay without defaulting to TRON", () => {
+	it("keeps the existing selectable alias without defaulting to TRON", () => {
 		expect(epaySelection("alipay")).toBeNull();
 		expect(epaySelection(undefined)).toBeNull();
 		expect(
@@ -44,7 +52,7 @@ describe("EPay compatibility adapter", () => {
 				money: "1.00",
 				out_trade_no: "order",
 				notify_url: "https://merchant.example/notify",
-				type: "unsupported",
+				type: "unsupported!",
 				sign: "a".repeat(32),
 			}),
 		).toMatchObject({ success: false });

@@ -190,6 +190,34 @@ describe("webhooks", () => {
 		).toBe(true);
 	});
 
+	it("accepts the traditional success acknowledgement for EPay callbacks", async () => {
+		const result = await deliverWebhook(
+			{
+				deliveryId: "delivery-epay-success",
+				eventId: "event-epay-success",
+				attempt: 1,
+				url: "https://merchant.example/notify",
+				secret: "merchant-secret",
+				protocol: "epay",
+				payload: {},
+				epay: {
+					pid: "100000000001",
+					trade_no: "trade-1",
+					out_trade_no: "EPAY-1001",
+					type: "usdt.tron",
+					name: "Invoice 1001",
+					money: "12.50",
+					trade_status: "TRADE_SUCCESS",
+					param: "merchant-context",
+				},
+			},
+			vi
+				.fn<typeof fetch>()
+				.mockResolvedValue(new Response("success", { status: 200 })),
+		);
+		expect(result.success).toBe(true);
+	});
+
 	it("retains the redacted request snapshot for timeout and network failures", async () => {
 		for (const error of [
 			new DOMException("timed out", "TimeoutError"),
