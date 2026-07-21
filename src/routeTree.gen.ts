@@ -50,7 +50,6 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AdminWebhooksRecordsRouteImport } from './routes/admin/webhooks/records'
 import { Route as AdminWebhooksProviderEventsRouteImport } from './routes/admin/webhooks/provider-events'
 import { Route as AdminWebhooksInboundRecordsRouteImport } from './routes/admin/webhooks/inbound-records'
-import { Route as AdminWebhooksEndpointIdRouteImport } from './routes/admin/webhooks/$endpointId'
 import { Route as AdminTelegramUsersRouteImport } from './routes/admin/telegram/users'
 import { Route as AdminTelegramTemplatesRouteImport } from './routes/admin/telegram/templates'
 import { Route as AdminTelegramNotificationsRouteImport } from './routes/admin/telegram/notifications'
@@ -294,11 +293,6 @@ const AdminWebhooksInboundRecordsRoute =
     path: '/inbound-records',
     getParentRoute: () => AdminWebhooksRouteRoute,
   } as any)
-const AdminWebhooksEndpointIdRoute = AdminWebhooksEndpointIdRouteImport.update({
-  id: '/$endpointId',
-  path: '/$endpointId',
-  getParentRoute: () => AdminWebhooksRouteRoute,
-} as any)
 const AdminTelegramUsersRoute = AdminTelegramUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -531,7 +525,6 @@ export interface FileRoutesByFullPath {
   '/admin/telegram/notifications': typeof AdminTelegramNotificationsRoute
   '/admin/telegram/templates': typeof AdminTelegramTemplatesRoute
   '/admin/telegram/users': typeof AdminTelegramUsersRoute
-  '/admin/webhooks/$endpointId': typeof AdminWebhooksEndpointIdRoute
   '/admin/webhooks/inbound-records': typeof AdminWebhooksInboundRecordsRoute
   '/admin/webhooks/provider-events': typeof AdminWebhooksProviderEventsRoute
   '/admin/webhooks/records': typeof AdminWebhooksRecordsRoute
@@ -597,7 +590,6 @@ export interface FileRoutesByTo {
   '/admin/telegram/notifications': typeof AdminTelegramNotificationsRoute
   '/admin/telegram/templates': typeof AdminTelegramTemplatesRoute
   '/admin/telegram/users': typeof AdminTelegramUsersRoute
-  '/admin/webhooks/$endpointId': typeof AdminWebhooksEndpointIdRoute
   '/admin/webhooks/inbound-records': typeof AdminWebhooksInboundRecordsRoute
   '/admin/webhooks/provider-events': typeof AdminWebhooksProviderEventsRoute
   '/admin/webhooks/records': typeof AdminWebhooksRecordsRoute
@@ -675,7 +667,6 @@ export interface FileRoutesById {
   '/admin/telegram/notifications': typeof AdminTelegramNotificationsRoute
   '/admin/telegram/templates': typeof AdminTelegramTemplatesRoute
   '/admin/telegram/users': typeof AdminTelegramUsersRoute
-  '/admin/webhooks/$endpointId': typeof AdminWebhooksEndpointIdRoute
   '/admin/webhooks/inbound-records': typeof AdminWebhooksInboundRecordsRoute
   '/admin/webhooks/provider-events': typeof AdminWebhooksProviderEventsRoute
   '/admin/webhooks/records': typeof AdminWebhooksRecordsRoute
@@ -752,7 +743,6 @@ export interface FileRouteTypes {
     | '/admin/telegram/notifications'
     | '/admin/telegram/templates'
     | '/admin/telegram/users'
-    | '/admin/webhooks/$endpointId'
     | '/admin/webhooks/inbound-records'
     | '/admin/webhooks/provider-events'
     | '/admin/webhooks/records'
@@ -818,7 +808,6 @@ export interface FileRouteTypes {
     | '/admin/telegram/notifications'
     | '/admin/telegram/templates'
     | '/admin/telegram/users'
-    | '/admin/webhooks/$endpointId'
     | '/admin/webhooks/inbound-records'
     | '/admin/webhooks/provider-events'
     | '/admin/webhooks/records'
@@ -895,7 +884,6 @@ export interface FileRouteTypes {
     | '/admin/telegram/notifications'
     | '/admin/telegram/templates'
     | '/admin/telegram/users'
-    | '/admin/webhooks/$endpointId'
     | '/admin/webhooks/inbound-records'
     | '/admin/webhooks/provider-events'
     | '/admin/webhooks/records'
@@ -1234,13 +1222,6 @@ declare module '@tanstack/react-router' {
       path: '/inbound-records'
       fullPath: '/admin/webhooks/inbound-records'
       preLoaderRoute: typeof AdminWebhooksInboundRecordsRouteImport
-      parentRoute: typeof AdminWebhooksRouteRoute
-    }
-    '/admin/webhooks/$endpointId': {
-      id: '/admin/webhooks/$endpointId'
-      path: '/$endpointId'
-      fullPath: '/admin/webhooks/$endpointId'
-      preLoaderRoute: typeof AdminWebhooksEndpointIdRouteImport
       parentRoute: typeof AdminWebhooksRouteRoute
     }
     '/admin/telegram/users': {
@@ -1640,7 +1621,6 @@ const AdminTelegramRouteRouteWithChildren =
   AdminTelegramRouteRoute._addFileChildren(AdminTelegramRouteRouteChildren)
 
 interface AdminWebhooksRouteRouteChildren {
-  AdminWebhooksEndpointIdRoute: typeof AdminWebhooksEndpointIdRoute
   AdminWebhooksInboundRecordsRoute: typeof AdminWebhooksInboundRecordsRoute
   AdminWebhooksProviderEventsRoute: typeof AdminWebhooksProviderEventsRoute
   AdminWebhooksRecordsRoute: typeof AdminWebhooksRecordsRoute
@@ -1648,7 +1628,6 @@ interface AdminWebhooksRouteRouteChildren {
 }
 
 const AdminWebhooksRouteRouteChildren: AdminWebhooksRouteRouteChildren = {
-  AdminWebhooksEndpointIdRoute: AdminWebhooksEndpointIdRoute,
   AdminWebhooksInboundRecordsRoute: AdminWebhooksInboundRecordsRoute,
   AdminWebhooksProviderEventsRoute: AdminWebhooksProviderEventsRoute,
   AdminWebhooksRecordsRoute: AdminWebhooksRecordsRoute,

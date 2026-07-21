@@ -40,8 +40,8 @@ describe("Webhook Server Function error contract", () => {
 
 	it.each([
 		[
-			"webhook_inbound_endpoint_not_found",
-			m.webhooks_error_inbound_endpoint_not_found(),
+			"webhook_inbound_receipt_not_found",
+			m.webhooks_error_inbound_receipt_not_found(),
 		],
 		["webhook_inbound_unavailable", m.webhooks_error_inbound_unavailable()],
 		["webhook_queue_unavailable", m.webhooks_error_queue_unavailable()],
@@ -106,7 +106,7 @@ describe("Webhook Server Function error contract", () => {
 		).join("\n");
 
 		for (const code of [
-			"webhook_inbound_endpoint_not_found",
+			"webhook_inbound_receipt_not_found",
 			"webhook_inbound_unavailable",
 			"webhook_queue_unavailable",
 		])

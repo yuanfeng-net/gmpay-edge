@@ -129,8 +129,8 @@ const permissionContracts = [
 		"webhooks:read",
 		[
 			"listInboundWebhookEndpointsFn",
-			"getInboundWebhookEndpointPageFn",
 			"listInboundWebhookReceiptsFn",
+			"getInboundWebhookReceiptFn",
 			"listAdminWebhooksFn",
 			"getAdminWebhookDeliveryFn",
 			"listPaymentProviderEventsFn",

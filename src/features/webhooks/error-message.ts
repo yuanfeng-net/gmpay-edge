@@ -10,8 +10,8 @@ export function webhookOperationErrorMessage(error: unknown) {
 			return m.webhooks_error_delivery_not_retryable();
 		case "webhook_delivery_retry_in_progress":
 			return m.webhooks_error_delivery_retry_in_progress();
-		case "webhook_inbound_endpoint_not_found":
-			return m.webhooks_error_inbound_endpoint_not_found();
+		case "webhook_inbound_receipt_not_found":
+			return m.webhooks_error_inbound_receipt_not_found();
 		case "webhook_inbound_unavailable":
 			return m.webhooks_error_inbound_unavailable();
 		case "webhook_queue_unavailable":

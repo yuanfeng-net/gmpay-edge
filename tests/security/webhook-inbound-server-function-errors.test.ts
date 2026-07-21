@@ -16,8 +16,8 @@ const request = new Request("https://example.com/_serverFn/inbound-webhook");
 describe("inbound Webhook Server Function error contract", () => {
 	it.each([
 		[
-			"webhook_inbound_endpoint_not_found",
-			m.webhooks_error_inbound_endpoint_not_found(),
+			"webhook_inbound_receipt_not_found",
+			m.webhooks_error_inbound_receipt_not_found(),
 		],
 		["webhook_inbound_unavailable", m.webhooks_error_inbound_unavailable()],
 	] as const)("maps reviewed code %s to localized copy", (code, message) => {
@@ -26,19 +26,19 @@ describe("inbound Webhook Server Function error contract", () => {
 		).toBe(message);
 	});
 
-	it("serializes a missing endpoint without a stack", async () => {
+	it("serializes a missing receipt without a stack", async () => {
 		const normalized = normalizeServerFunctionError(
 			new DomainError(
-				"webhook_inbound_endpoint_not_found",
+				"webhook_inbound_receipt_not_found",
 				404,
-				"Inbound webhook endpoint not found",
+				"Inbound webhook receipt not found",
 			),
 			request,
 		);
 		const serialized = JSON.stringify(
 			await toCrossJSONAsync(normalized, { refs: new Map(), plugins: [] }),
 		);
-		expect(serialized).toContain("webhook_inbound_endpoint_not_found");
+		expect(serialized).toContain("webhook_inbound_receipt_not_found");
 		expect(serialized).not.toMatch(/stack|SELECT|secret/);
 	});
 
@@ -57,20 +57,6 @@ describe("inbound Webhook Server Function error contract", () => {
 		);
 	});
 
-	it("uses reviewed copy and never renders an arbitrary error message", () => {
-		const page = readFileSync(
-			fileURLToPath(
-				new URL(
-					"../../src/features/webhooks/pages/admin-inbound.tsx",
-					import.meta.url,
-				),
-			),
-			"utf8",
-		);
-		expect(page).toContain("webhookOperationErrorMessage(loadError)");
-		expect(page).not.toContain("error.message");
-	});
-
 	it("keeps the built-in endpoint catalog read-only", () => {
 		const server = readFileSync(
 			fileURLToPath(
@@ -79,27 +65,24 @@ describe("inbound Webhook Server Function error contract", () => {
 			"utf8",
 		);
 		expect(server).toContain("listInboundWebhookEndpointsFn");
-		expect(server).toContain("getInboundWebhookEndpointPageFn");
 		expect(server).not.toMatch(
 			/(create|update|delete|set)InboundWebhookEndpointFn/,
 		);
 	});
 
-	it("loads endpoint metadata and paginated receipts with one request owner", () => {
+	it("keeps inbound records in the unified list and detail dialog", () => {
 		const page = readFileSync(
 			fileURLToPath(
 				new URL(
-					"../../src/features/webhooks/pages/admin-inbound.tsx",
+					"../../src/features/webhooks/pages/admin-inbound-records.tsx",
 					import.meta.url,
 				),
 			),
 			"utf8",
 		);
-		expect(page).toContain(
-			"const result = await getInboundWebhookEndpointPageFn({",
-		);
-		expect(page).not.toContain("getInboundWebhookEndpointMetadataFn");
-		expect(page).not.toContain("listInboundWebhookReceiptsFn");
+		expect(page).toContain("listInboundWebhookReceiptsFn");
+		expect(page).toContain("InboundWebhookReceiptDetailsDialog");
+		expect(page).not.toContain('to="/admin/webhooks/$endpointId"');
 	});
 
 	it("renders one page-level heading on the inbound endpoint list", () => {
@@ -112,12 +95,8 @@ describe("inbound Webhook Server Function error contract", () => {
 			),
 			"utf8",
 		);
-		const inboundList = page.slice(
-			page.indexOf("export function InboundWebhookEndpointsPage"),
-			page.indexOf("export function InboundWebhookEndpointPage"),
-		);
-		expect(inboundList).toContain("title={m.webhooks_inbound_title()}");
-		expect(inboundList).not.toContain("<h2");
+		expect(page).toContain("title={m.webhooks_inbound_title()}");
+		expect(page).not.toContain("InboundWebhookEndpointPage");
 	});
 
 	it("defines inbound errors in all six locale resources", () => {
@@ -138,7 +117,7 @@ describe("inbound Webhook Server Function error contract", () => {
 				),
 			) as Record<string, unknown>;
 			for (const key of [
-				"webhooks_error_inbound_endpoint_not_found",
+				"webhooks_error_inbound_receipt_not_found",
 				"webhooks_error_inbound_unavailable",
 			])
 				expect(messages[key], `${locale}:${key}`).toBeTruthy();

@@ -301,17 +301,6 @@ describe("admin navigation", () => {
 				{
 					title: "Inbound Webhook",
 					url: "/admin/webhooks",
-					activePrefixes: ["/admin/webhooks/inbound-"],
-				},
-				{ pathname: "/admin/webhooks/inbound-okpay-notify" },
-			),
-		).toBe(true);
-		expect(
-			matchesNavLocation(
-				{
-					title: "Inbound Webhook",
-					url: "/admin/webhooks",
-					activePrefixes: ["/admin/webhooks/inbound-"],
 				},
 				{ pathname: "/admin/webhooks/records" },
 			),

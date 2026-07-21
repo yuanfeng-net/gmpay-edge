@@ -1,6 +1,6 @@
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { loadInboundWebhookEndpointPage } from "#/features/webhooks/server/inbound-admin";
+import { loadInboundWebhookReceipt } from "#/features/webhooks/server/inbound-admin";
 import {
 	inboundWebhookCatalogEndpoints,
 	inboundWebhookEndpoints,
@@ -58,12 +58,13 @@ describe("inbound webhook receipts", () => {
 		});
 		const rows = await db
 			.prepare(
-				`SELECT request_id, request_path, signature_status, processing_status,
+				`SELECT id, request_id, request_path, signature_status, processing_status,
 				 response_status, error_code FROM inbound_webhook_receipts`,
 			)
 			.all<Record<string, unknown>>();
 		expect(rows.results).toEqual([
 			{
+				id: expect.any(String),
 				request_id: "request-a",
 				request_path: "/api/providers/okpay/notify",
 				signature_status: "invalid",
@@ -73,45 +74,27 @@ describe("inbound webhook receipts", () => {
 			},
 		]);
 		expect(JSON.stringify(rows.results)).not.toContain("not-stored");
-		const page = await loadInboundWebhookEndpointPage(
+		const receipt = await loadInboundWebhookReceipt(
 			db,
-			"https://edge.example",
-			{
-				id: "inbound-okpay-notify",
-				pageIndex: 0,
-				pageSize: 1,
-				search: "request-a",
-			},
+			String(rows.results[0]?.id),
 		);
-		expect(page.endpoint).toMatchObject({
-			code: "okpay.notify",
-			path: "/api/providers/okpay/notify",
-			exampleUrl: "https://edge.example/api/providers/okpay/notify",
-		});
-		expect(page).toMatchObject({
-			receiptTotal: 1,
-			pageIndex: 0,
-			pageSize: 1,
-		});
-		expect(page.receipts).toHaveLength(1);
-		expect(page.receipts[0]).toMatchObject({
+		expect(receipt).toMatchObject({
+			endpointCode: "okpay.notify",
 			requestId: "request-a",
+			method: "POST",
 			requestPath: "/api/providers/okpay/notify",
 			signatureStatus: "invalid",
 			processingStatus: "rejected",
+			responseStatus: 401,
+			errorCode: "invalid_signature",
 		});
 	});
 
-	it("returns a stable error for a missing built-in endpoint", async () => {
+	it("returns a stable error for a missing receipt", async () => {
 		await expect(
-			loadInboundWebhookEndpointPage(db, "https://edge.example", {
-				id: "missing-endpoint",
-				pageIndex: 0,
-				pageSize: 10,
-				search: "",
-			}),
+			loadInboundWebhookReceipt(db, "00000000-0000-4000-8000-000000000000"),
 		).rejects.toMatchObject({
-			code: "webhook_inbound_endpoint_not_found",
+			code: "webhook_inbound_receipt_not_found",
 			status: 404,
 		});
 	});

@@ -7,10 +7,7 @@ import {
 	systemPermission,
 } from "#/features/access/system-rbac";
 import { loadAdminWebhookDelivery } from "#/features/webhooks/server/admin-detail";
-import {
-	inboundReceiptQuerySchema,
-	loadInboundWebhookEndpointPage,
-} from "#/features/webhooks/server/inbound-admin";
+import { loadInboundWebhookReceipt } from "#/features/webhooks/server/inbound-admin";
 import { inboundWebhookCatalogEndpoints } from "#/features/webhooks/server/inbound-receipts";
 import {
 	claimManualWebhookRetry,
@@ -32,7 +29,7 @@ const webhookListSchema = z.object({
 export const listInboundWebhookEndpointsFn = createServerFn({
 	method: "GET",
 }).handler(async () => {
-	const { db, request } = await adminContext(
+	const { db } = await adminContext(
 		systemPermission("webhooks", "read"),
 		"webhook_inbound_unavailable",
 	);
@@ -48,14 +45,10 @@ export const listInboundWebhookEndpointsFn = createServerFn({
 	const statistics = new Map(
 		rows.results.map((row) => [row.endpoint_code, row]),
 	);
-	const origin = new URL(request.url).origin;
 	return inboundWebhookCatalogEndpoints.map((endpoint) => {
 		const statistic = statistics.get(endpoint.code);
 		return {
 			...endpoint,
-			exampleUrl: `${origin}${endpoint.path
-				.replace(":botId", "{botId}")
-				.replace(":sourceId", "{sourceId}")}`,
 			receiptCount: statistic?.receipt_count ?? 0,
 			lastReceivedAt: statistic?.last_received_at
 				? new Date(statistic.last_received_at).toISOString()
@@ -63,20 +56,6 @@ export const listInboundWebhookEndpointsFn = createServerFn({
 		};
 	});
 });
-
-export const getInboundWebhookEndpointPageFn = createServerFn({ method: "GET" })
-	.validator((input) => inboundReceiptQuerySchema.parse(input))
-	.handler(async ({ data }) => {
-		const { db, request } = await adminContext(
-			systemPermission("webhooks", "read"),
-			"webhook_inbound_unavailable",
-		);
-		return loadInboundWebhookEndpointPage(
-			db,
-			new URL(request.url).origin,
-			data,
-		);
-	});
 
 export const listInboundWebhookReceiptsFn = createServerFn({ method: "GET" })
 	.validator((input) => webhookListSchema.parse(input))
@@ -130,10 +109,6 @@ export const listInboundWebhookReceiptsFn = createServerFn({ method: "GET" })
 		return {
 			items: rows.results.map((row) => ({
 				id: row.id,
-				endpointId:
-					inboundWebhookCatalogEndpoints.find(
-						(endpoint) => endpoint.code === row.endpoint_code,
-					)?.id ?? null,
 				endpointCode: row.endpoint_code,
 				requestId: row.request_id,
 				method: row.method,
@@ -149,6 +124,18 @@ export const listInboundWebhookReceiptsFn = createServerFn({ method: "GET" })
 			pageIndex: data.pageIndex,
 			pageSize: data.pageSize,
 		};
+	});
+
+export const getInboundWebhookReceiptFn = createServerFn({ method: "GET" })
+	.validator((input: { id: string }) =>
+		z.object({ id: z.string().uuid() }).parse(input),
+	)
+	.handler(async ({ data }) => {
+		const { db } = await adminContext(
+			systemPermission("webhooks", "read"),
+			"webhook_inbound_unavailable",
+		);
+		return loadInboundWebhookReceipt(db, data.id);
 	});
 
 export const listAdminWebhooksFn = createServerFn({ method: "GET" })

@@ -183,11 +183,6 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						"/admin/webhooks",
 						Webhook,
 						systemPermission("webhooks", "read"),
-						[
-							"/admin/webhooks/inbound-okpay-",
-							"/admin/webhooks/inbound-alchemy-",
-							"/admin/webhooks/inbound-telegram-",
-						],
 					),
 					entry(
 						"webhooks-inbound-records",

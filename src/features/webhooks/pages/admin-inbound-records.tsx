@@ -1,12 +1,29 @@
 "use client";
 
-import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useCallback, useMemo, useState } from "react";
+import { Eye, MoreHorizontal, RotateCcw } from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { ProButton } from "#/components/pro/base/button";
 import { ProTable, type ProTableState } from "#/components/pro/table";
 import { Badge } from "#/components/ui/badge";
-import { listInboundWebhookReceiptsFn } from "#/features/webhooks/server/admin";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "#/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu";
+import {
+	getInboundWebhookReceiptFn,
+	listInboundWebhookReceiptsFn,
+} from "#/features/webhooks/server/admin";
 import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime } from "#/lib/format";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
@@ -21,6 +38,10 @@ export function InboundNotificationRecordsPage() {
 		searchColumnId: "requestId",
 	});
 	const [refreshKey, setRefreshKey] = useState(0);
+	const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(
+		null,
+	);
+	const detailsTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const request = useCallback(async (state: ProTableState) => {
 		const search = String(
 			state.columnFilters.find((filter) => filter.id === "requestId")?.value ??
@@ -103,19 +124,35 @@ export function InboundNotificationRecordsPage() {
 			{
 				id: "actions",
 				header: m.common_actions(),
-				cell: ({ row }) =>
-					row.original.endpointId ? (
-						<div className="flex justify-end">
-							<ProButton variant="ghost" size="sm" asChild>
-								<Link
-									to="/admin/webhooks/$endpointId"
-									params={{ endpointId: row.original.endpointId }}
+				cell: ({ row }) => (
+					<div className="flex justify-end">
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<ProButton
+									size="icon-sm"
+									variant="ghost"
+									tooltip={m.common_actions()}
+									onFocus={(event) => {
+										detailsTriggerRef.current = event.currentTarget;
+									}}
+									onClick={(event) => {
+										detailsTriggerRef.current = event.currentTarget;
+									}}
 								>
+									<MoreHorizontal />
+								</ProButton>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								<DropdownMenuItem
+									onClick={() => setSelectedReceiptId(row.original.id)}
+								>
+									<Eye />
 									{m.webhooks_view_details()}
-								</Link>
-							</ProButton>
-						</div>
-					) : null,
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+				),
 			},
 		],
 		[],
@@ -140,6 +177,156 @@ export function InboundNotificationRecordsPage() {
 				}}
 				table={{ stickyHeader: true }}
 			/>
+			<InboundWebhookReceiptDetailsDialog
+				receiptId={selectedReceiptId}
+				onClose={() => setSelectedReceiptId(null)}
+				restoreFocusTo={detailsTriggerRef.current}
+			/>
+		</div>
+	);
+}
+
+type ReceiptDetails = Awaited<ReturnType<typeof getInboundWebhookReceiptFn>>;
+
+export function InboundWebhookReceiptDetailsDialog({
+	receiptId,
+	onClose,
+	restoreFocusTo,
+}: {
+	receiptId: string | null;
+	onClose: () => void;
+	restoreFocusTo?: HTMLElement | null;
+}) {
+	const details = useQuery({
+		queryKey: ["admin", "inbound-webhook-receipts", receiptId],
+		queryFn: () =>
+			getInboundWebhookReceiptFn({ data: { id: receiptId ?? "" } }),
+		enabled: receiptId !== null,
+	});
+	return (
+		<Dialog
+			open={receiptId !== null}
+			onOpenChange={(open) => !open && onClose()}
+		>
+			<DialogContent
+				className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"
+				onCloseAutoFocus={(event) => {
+					if (!restoreFocusTo) return;
+					event.preventDefault();
+					restoreFocusTo.focus();
+				}}
+			>
+				<DialogHeader>
+					<DialogTitle>{m.webhooks_inbound_record_details()}</DialogTitle>
+					<DialogDescription className="break-all">
+						{receiptId}
+					</DialogDescription>
+				</DialogHeader>
+				{details.isLoading ? (
+					<p className="py-8 text-center text-muted-foreground">
+						{m.common_loading()}
+					</p>
+				) : null}
+				{details.isError ? (
+					<div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/40 p-6 text-center">
+						<p className="text-destructive">
+							{m.webhooks_inbound_record_details_load_failed()}
+						</p>
+						<ProButton
+							variant="outline"
+							loading={details.isFetching}
+							onClick={() => details.refetch()}
+						>
+							<RotateCcw />
+							{m.webhooks_retry_load()}
+						</ProButton>
+					</div>
+				) : null}
+				{details.data ? (
+					<InboundWebhookReceiptDetails details={details.data} />
+				) : null}
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function InboundWebhookReceiptDetails({
+	details,
+}: {
+	details: ReceiptDetails;
+}) {
+	return (
+		<section className="space-y-3">
+			<h3 className="font-semibold text-sm">
+				{m.webhooks_inbound_record_overview()}
+			</h3>
+			<dl className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-3">
+				<DetailValue label={m.webhooks_inbound_endpoint()}>
+					<div>
+						<strong className="block font-medium">
+							{endpointNameLabel(details.endpointCode)}
+						</strong>
+						<code className="text-muted-foreground text-xs">
+							{details.endpointCode}
+						</code>
+					</div>
+				</DetailValue>
+				<DetailValue
+					label={m.common_status()}
+					value={processingStatusLabel(details.processingStatus)}
+				/>
+				<DetailValue
+					label={m.webhooks_signature()}
+					value={signatureStatusLabel(details.signatureStatus)}
+				/>
+				<DetailValue
+					label={m.webhooks_request_id()}
+					value={details.requestId}
+				/>
+				<DetailValue label={m.webhooks_method()} value={details.method} />
+				<DetailValue
+					label={m.webhooks_response()}
+					value={String(details.responseStatus)}
+				/>
+				<DetailValue
+					label={m.common_duration()}
+					value={`${details.durationMs} ms`}
+				/>
+				<DetailValue
+					label={m.webhooks_error_code()}
+					value={details.errorCode ?? "—"}
+				/>
+				<DetailValue
+					label={m.webhooks_received_at()}
+					value={formatDateTime(details.receivedAt)}
+				/>
+				<DetailValue
+					className="sm:col-span-2 lg:col-span-3"
+					label={m.webhooks_path()}
+					value={details.requestPath}
+				/>
+			</dl>
+		</section>
+	);
+}
+
+function DetailValue({
+	label,
+	value,
+	children,
+	className,
+}: {
+	label: string;
+	value?: string;
+	children?: ReactNode;
+	className?: string;
+}) {
+	return (
+		<div className={className}>
+			<dt className="text-muted-foreground text-xs">{label}</dt>
+			<dd className="mt-1 break-all font-mono text-xs">
+				{children ?? value ?? "—"}
+			</dd>
 		</div>
 	);
 }
