@@ -22,13 +22,7 @@ async function createOrderAwaitingReceivingMethod(
 	context: OrderCreationContext = {},
 ): Promise<ApiOrder> {
 	const settings = await loadOperationalSettings(db);
-	const expiresInMs = input.expiresInMs ?? settings.defaultExpiryMs;
-	if (expiresInMs > settings.maxExpiryMs)
-		throw new OrderServiceError(
-			"expiry_exceeds_limit",
-			"Order expiry exceeds the configured maximum",
-			422,
-		);
+	const expiresInMs = resolveOrderExpiryMs(input.expiresInMs, settings);
 	const id = generateOrderId();
 	const now = Date.now();
 	const expiresAt = now + expiresInMs;
@@ -228,13 +222,7 @@ async function createOrderFromReceivingMethod(
 				})
 			: null;
 	const settings = await loadOperationalSettings(db);
-	const expiresInMs = input.expiresInMs ?? settings.defaultExpiryMs;
-	if (expiresInMs > settings.maxExpiryMs)
-		throw new OrderServiceError(
-			"expiry_exceeds_limit",
-			"Order expiry exceeds the configured maximum",
-			422,
-		);
+	const expiresInMs = resolveOrderExpiryMs(input.expiresInMs, settings);
 	const now = Date.now();
 	const expiresAt = now + expiresInMs;
 	const fiatDecimals = currencyDecimals(input.currency);
@@ -249,7 +237,10 @@ async function createOrderFromReceivingMethod(
 			...(orderAmountUsdMinor ? { orderAmountUsdMinor } : {}),
 			decimals: method.decimals,
 			expiresAt,
-			reusableAt: expiresAt + settings.reorgMonitorMs,
+			reusableAt: settings.immediateReleaseMode
+				? expiresAt
+				: expiresAt + settings.reorgMonitorMs,
+			immediateReleaseMode: settings.immediateReleaseMode,
 			now,
 			...(exchangeRateQuote
 				? {
@@ -306,6 +297,21 @@ async function createOrderFromReceivingMethod(
 		expiresAt: new Date(expiresAt).toISOString(),
 		...(input.notifyUrl ? { notifyUrl: input.notifyUrl } : {}),
 	};
+}
+
+function resolveOrderExpiryMs(
+	requestedExpiryMs: number | undefined,
+	settings: Awaited<ReturnType<typeof loadOperationalSettings>>,
+) {
+	if (settings.immediateReleaseMode) return settings.fixedExpiryMs;
+	const expiresInMs = requestedExpiryMs ?? settings.defaultExpiryMs;
+	if (expiresInMs > settings.maxExpiryMs)
+		throw new OrderServiceError(
+			"expiry_exceeds_limit",
+			"Order expiry exceeds the configured maximum",
+			422,
+		);
+	return expiresInMs;
 }
 
 export interface OrderCreationContext {

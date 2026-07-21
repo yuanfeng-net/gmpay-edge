@@ -254,6 +254,34 @@ describe("receiving method allocation and immutable snapshots", () => {
 		});
 	});
 
+	it("deletes a terminal lock in immediate release mode", async () => {
+		await db
+			.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.immediate_release_mode', 'true', 0, 0, 0)",
+			)
+			.run();
+		const order = await db
+			.prepare(
+				"SELECT id FROM orders WHERE external_order_id = 'method-order' LIMIT 1",
+			)
+			.first<{ id: string }>();
+		await expect(
+			releaseReceivingMethodLock(db, order?.id ?? "missing"),
+		).resolves.toBe(1);
+		const lock = await db
+			.prepare(
+				"SELECT 1 AS value FROM receiving_method_locks WHERE order_id = ?",
+			)
+			.bind(order?.id ?? "missing")
+			.first();
+		expect(lock).toBeNull();
+		await db
+			.prepare(
+				"DELETE FROM system_settings WHERE key = 'orders.immediate_release_mode'",
+			)
+			.run();
+	});
+
 	it("keeps the order snapshot immutable after receiving method edits", async () => {
 		await db.batch([
 			db.prepare(

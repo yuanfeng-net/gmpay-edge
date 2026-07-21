@@ -73,7 +73,7 @@ describe("authoritative operational settings", () => {
 
 		await expect(loadOperationalSettings(database)).resolves.toMatchObject({
 			defaultExpiryMs: 900_000,
-			maxExpiryMs: 600_000,
+			maxExpiryMs: 86_400_000,
 			latePaymentPolicy: "review",
 			webhookMaxAttempts: 8,
 			webhookTimeoutMs: 10_000,

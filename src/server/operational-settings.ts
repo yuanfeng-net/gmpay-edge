@@ -1,6 +1,11 @@
 import { z } from "zod";
 
+export const immediateReleaseModeSql =
+	"COALESCE((SELECT json_extract(value, '$') FROM system_settings WHERE key = 'orders.immediate_release_mode'), 0)";
+
 type OperationalSettings = {
+	immediateReleaseMode: boolean;
+	fixedExpiryMs: number;
 	defaultExpiryMs: number;
 	maxExpiryMs: number;
 	latePaymentPolicy: "accept" | "review" | "reject";
@@ -15,6 +20,8 @@ type OperationalSettings = {
 };
 
 const operationalSettingsSchema = z.object({
+	immediateReleaseMode: z.boolean(),
+	fixedExpiryMs: z.number().int().min(60_000).max(604_800_000),
 	defaultExpiryMs: z.number().int().min(60_000).max(86_400_000),
 	maxExpiryMs: z.number().int().min(300_000).max(604_800_000),
 	latePaymentPolicy: z.enum(["accept", "review", "reject"]),
@@ -28,6 +35,8 @@ const operationalSettingsSchema = z.object({
 	retentionAuditMs: z.number().int().min(2_592_000_000).max(315_360_000_000),
 });
 const defaults: OperationalSettings = {
+	immediateReleaseMode: false,
+	fixedExpiryMs: 900_000,
 	defaultExpiryMs: 900_000,
 	maxExpiryMs: 86_400_000,
 	latePaymentPolicy: "review",
@@ -42,6 +51,8 @@ const defaults: OperationalSettings = {
 };
 
 const keys = {
+	"orders.immediate_release_mode": "immediateReleaseMode",
+	"orders.fixed_expiry_ms": "fixedExpiryMs",
 	"orders.default_expiry_ms": "defaultExpiryMs",
 	"orders.max_expiry_ms": "maxExpiryMs",
 	"payments.late_payment_policy": "latePaymentPolicy",
@@ -78,6 +89,13 @@ export async function loadOperationalSettings(db: D1Database) {
 		} catch {
 			// Invalid rows fall back to the validated defaults.
 		}
+	}
+	if (result.defaultExpiryMs > result.maxExpiryMs) {
+		result = {
+			...result,
+			defaultExpiryMs: defaults.defaultExpiryMs,
+			maxExpiryMs: defaults.maxExpiryMs,
+		};
 	}
 	return result;
 }

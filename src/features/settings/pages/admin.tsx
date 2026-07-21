@@ -2,7 +2,9 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Switch } from "#/components/pro/base/fields/checkbox";
 import { ProSchemaForm } from "#/components/pro/form";
 import { Button } from "#/components/ui/button";
 import { settingsErrorMessage } from "#/features/settings/error-message";
@@ -29,7 +31,7 @@ const fields: Record<
 		key: SettingKey;
 		label: string;
 		description: string;
-		type: "text" | "password" | "number" | "select" | "origins";
+		type: "text" | "password" | "number" | "select" | "origins" | "switch";
 		required?: boolean;
 		options?: string[];
 		min?: number;
@@ -37,6 +39,18 @@ const fields: Record<
 	}>
 > = {
 	general: [
+		{
+			key: "orders.immediate_release_mode",
+			label: m.settings_immediate_release_mode(),
+			description: m.settings_immediate_release_mode_description(),
+			type: "switch",
+		},
+		{
+			key: "orders.fixed_expiry_ms",
+			label: m.settings_order_expiry(),
+			description: m.settings_order_expiry_description(),
+			type: "number",
+		},
 		{
 			key: "orders.default_expiry_ms",
 			label: m.settings_default_expiry(),
@@ -160,12 +174,26 @@ export function SystemSettingsSection({ group }: { group: SettingsGroup }) {
 	const configuredSecrets = new Map(
 		query.data?.map((item) => [item.key, item.configured]),
 	);
+	const storedImmediateReleaseMode =
+		values.get("orders.immediate_release_mode") === true;
+	const [immediateReleaseMode, setImmediateReleaseMode] = useState(
+		storedImmediateReleaseMode,
+	);
+	useEffect(
+		() => setImmediateReleaseMode(storedImmediateReleaseMode),
+		[storedImmediateReleaseMode],
+	);
 	const selected = fields[section].filter(
-		(field) => groupForSetting(field.key) === group,
+		(field) =>
+			groupForSetting(field.key) === group &&
+			orderSettingVisible(field.key, immediateReleaseMode),
 	);
 	const initialValues = Object.fromEntries(
 		selected.map((field) => {
-			const value = values.get(field.key);
+			const value =
+				field.key === "orders.immediate_release_mode"
+					? immediateReleaseMode
+					: values.get(field.key);
 			return [
 				field.key,
 				Array.isArray(value)
@@ -205,8 +233,12 @@ export function SystemSettingsSection({ group }: { group: SettingsGroup }) {
 				<div className="w-full space-y-6">
 					<ProSchemaForm
 						id={formId}
-						key={`${group}-${query.data?.map((item) => item.updatedAt).join(":")}`}
-						schema={settingsSchema(selected, configuredSecrets)}
+						key={`${group}-${immediateReleaseMode}-${query.data?.map((item) => item.updatedAt).join(":")}`}
+						schema={settingsSchema(
+							selected,
+							configuredSecrets,
+							setImmediateReleaseMode,
+						)}
 						initialValues={initialValues}
 						onFinish={save}
 						onFinishFailed={(error) => toast.error(settingsErrorMessage(error))}
@@ -216,6 +248,13 @@ export function SystemSettingsSection({ group }: { group: SettingsGroup }) {
 			</div>
 		</div>
 	);
+}
+
+function orderSettingVisible(key: SettingKey, immediateReleaseMode: boolean) {
+	if (key === "orders.fixed_expiry_ms") return immediateReleaseMode;
+	if (key === "orders.default_expiry_ms" || key === "orders.max_expiry_ms")
+		return !immediateReleaseMode;
+	return true;
 }
 
 type SettingsGroup =
@@ -280,6 +319,7 @@ function groupMeta(group: SettingsGroup) {
 function settingsSchema(
 	selected: (typeof fields)[Section],
 	configuredSecrets: Map<SettingKey, boolean | undefined>,
+	setImmediateReleaseMode: (enabled: boolean) => void,
 ) {
 	return selected.map((field) => {
 		let fieldProps: Record<string, unknown> | undefined;
@@ -306,14 +346,34 @@ function settingsSchema(
 			label: field.label,
 			description: field.description,
 			valueType:
-				field.type === "select"
-					? ("select" as const)
-					: field.type === "password"
-						? ("password" as const)
-						: field.type === "origins"
-							? ("textarea" as const)
-							: ("text" as const),
+				field.type === "switch"
+					? ("switch" as const)
+					: field.type === "select"
+						? ("select" as const)
+						: field.type === "password"
+							? ("password" as const)
+							: field.type === "origins"
+								? ("textarea" as const)
+								: ("text" as const),
 			required: field.required ?? field.type !== "password",
+			...(field.key === "orders.immediate_release_mode"
+				? {
+						render: (control: {
+							value: unknown;
+							onChange: (value: boolean) => void;
+						}) => (
+							<Switch
+								id="orders-immediate-release-mode"
+								aria-label={m.settings_immediate_release_mode()}
+								value={control.value === true}
+								onChange={(enabled) => {
+									control.onChange(enabled);
+									setImmediateReleaseMode(enabled);
+								}}
+							/>
+						),
+					}
+				: {}),
 			...(fieldProps ? { fieldProps } : {}),
 		};
 	});
@@ -325,6 +385,7 @@ function localizedUnit(unit: SystemSettingUnit | undefined) {
 }
 
 const durationDisplay = {
+	"orders.fixed_expiry_ms": { divisor: 60_000, unit: "minutes" },
 	"orders.default_expiry_ms": { divisor: 60_000, unit: "minutes" },
 	"orders.max_expiry_ms": { divisor: 3_600_000, unit: "hours" },
 	"webhooks.timeout_ms": { divisor: 1_000, unit: "seconds" },
@@ -366,8 +427,9 @@ function settingOptionLabel(option: string) {
 
 function normalizeValue(
 	value: unknown,
-	type: "text" | "password" | "number" | "select" | "origins",
+	type: "text" | "password" | "number" | "select" | "origins" | "switch",
 ): SettingValue {
+	if (type === "switch") return value === true || value === "true";
 	const text = String(value ?? "").trim();
 	if (type === "number") return Number(text);
 	if (type === "origins")

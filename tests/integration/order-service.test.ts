@@ -183,11 +183,14 @@ describe("merchant order service on D1", () => {
 	});
 
 	it("enforces the configured maximum order expiry", async () => {
-		await db
-			.prepare(
+		await db.batch([
+			db.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.default_expiry_ms', '300000', 0, 0, 0)",
+			),
+			db.prepare(
 				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.max_expiry_ms', '600000', 0, 0, 0)",
-			)
-			.run();
+			),
+		]);
 		await expect(
 			createOrder(
 				db,
@@ -203,7 +206,44 @@ describe("merchant order service on D1", () => {
 			),
 		).rejects.toMatchObject({ code: "expiry_exceeds_limit", status: 422 });
 		await db
-			.prepare("DELETE FROM system_settings WHERE key = 'orders.max_expiry_ms'")
+			.prepare(
+				"DELETE FROM system_settings WHERE key IN ('orders.default_expiry_ms','orders.max_expiry_ms')",
+			)
+			.run();
+	});
+
+	it("uses the fixed order expiry in immediate release mode", async () => {
+		await db.batch([
+			db.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.immediate_release_mode', 'true', 0, 0, 0)",
+			),
+			db.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.fixed_expiry_ms', '120000', 0, 0, 0)",
+			),
+		]);
+		const created = await createOrder(
+			db,
+			{
+				externalOrderId: "fixed-expiry-order",
+				amount: "1.00",
+				currency: "USD",
+				paymentAsset: "USDT",
+				paymentNetwork: "tron",
+				expiresInMs: 600_000,
+			},
+			"https://pay.example.test/payments/gmpay/v1/order/create-transaction",
+		);
+		const stored = await db
+			.prepare(
+				"SELECT expires_at - created_at AS lifetime FROM orders WHERE id = ?",
+			)
+			.bind(created.orderId)
+			.first<{ lifetime: number }>();
+		expect(stored?.lifetime).toBe(120_000);
+		await db
+			.prepare(
+				"DELETE FROM system_settings WHERE key IN ('orders.immediate_release_mode','orders.fixed_expiry_ms')",
+			)
 			.run();
 	});
 

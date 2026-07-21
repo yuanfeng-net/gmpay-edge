@@ -79,6 +79,31 @@ describe("atomic order cancellation", () => {
 		});
 	});
 
+	it("deletes the lock when cancelling in immediate release mode", async () => {
+		await db
+			.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.immediate_release_mode', 'true', 0, 0, 0)",
+			)
+			.run();
+		await expect(
+			cancelOrderAtomically(db, "order-immediate", {
+				status: "pending",
+				version: 0,
+			}),
+		).resolves.toBe(true);
+		const lock = await db
+			.prepare(
+				"SELECT 1 AS value FROM receiving_method_locks WHERE order_id = 'order-immediate'",
+			)
+			.first();
+		expect(lock).toBeNull();
+		await db
+			.prepare(
+				"DELETE FROM system_settings WHERE key = 'orders.immediate_release_mode'",
+			)
+			.run();
+	});
+
 	it("persists the cancellation event idempotently for safe API retries", async () => {
 		const env = { DB: db } as Env;
 		await expect(
@@ -173,6 +198,16 @@ async function seed(db: D1Database) {
 		db
 			.prepare(
 				"INSERT INTO receiving_method_locks (id, receiving_method_id, asset_id, order_id, expected_amount_units, expires_at, reusable_at, created_at) VALUES ('lock-a', 'asset-a', 'asset-a', 'order-a', '1000000', ?, ?, ?)",
+			)
+			.bind(now + 60_000, now + 86_460_000, now),
+		db
+			.prepare(
+				"INSERT INTO orders (id, external_order_id, status, amount_minor, currency, currency_decimals, payment_asset_id, received_amount_units, expires_at, version, created_at, updated_at) VALUES ('order-immediate', 'cancel-immediate', 'pending', '100', 'USD', 2, 'asset-a', '0', ?, 0, ?, ?)",
+			)
+			.bind(now + 60_000, now, now),
+		db
+			.prepare(
+				"INSERT INTO receiving_method_locks (id, receiving_method_id, asset_id, order_id, expected_amount_units, collision_key, expires_at, reusable_at, created_at) VALUES ('lock-immediate', 'asset-a', 'asset-a', 'order-immediate', '1000001', 'asset-a:asset-a:1000001', ?, ?, ?)",
 			)
 			.bind(now + 60_000, now + 86_460_000, now),
 	]);

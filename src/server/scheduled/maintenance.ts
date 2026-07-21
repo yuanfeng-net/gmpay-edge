@@ -222,7 +222,7 @@ async function runMaintenanceInvocation(
 
 	if (dueWork.frequentCleanup)
 		await runScheduledTask("frequent_cleanup", () =>
-			runFrequentCleanup(env.DB, now),
+			runFrequentCleanup(env.DB, now, settings.immediateReleaseMode),
 		);
 	if (!dueWork.paymentScan) return;
 	if (!(await claimPaymentScan(env.DB, now, settings.paymentScanIntervalMs)))
@@ -553,21 +553,34 @@ function taskRunRetentionMs(retentionAuditMs: number) {
 	return Math.min(retentionAuditMs, MAX_TASK_RUN_RETENTION_MS);
 }
 
-async function runFrequentCleanup(db: D1Database, now: number) {
-	const clearedReusableLocks = await clearReusableReceivingMethodLockKeys(
-		db,
-		now,
-	);
+async function runFrequentCleanup(
+	db: D1Database,
+	now: number,
+	immediateReleaseMode: boolean,
+) {
+	const clearedReusableLocks = immediateReleaseMode
+		? 0
+		: await clearReusableReceivingMethodLockKeys(db, now);
+	const lockCleanup = immediateReleaseMode
+		? db
+				.prepare(
+					`DELETE FROM receiving_method_locks WHERE id IN (
+					 SELECT id FROM receiving_method_locks INDEXED BY receiving_method_locks_expiry_idx
+					 WHERE expires_at <= ? ORDER BY expires_at LIMIT ?
+					)`,
+				)
+				.bind(now, CLEANUP_BATCH_SIZE)
+		: db
+				.prepare(
+					`UPDATE receiving_method_locks SET released_at = ? WHERE id IN (
+					 SELECT id FROM receiving_method_locks INDEXED BY receiving_method_locks_expiry_idx
+					 WHERE released_at IS NULL AND expires_at <= ?
+					 ORDER BY expires_at LIMIT ?
+					)`,
+				)
+				.bind(now, now, CLEANUP_BATCH_SIZE);
 	const results = await db.batch([
-		db
-			.prepare(
-				`UPDATE receiving_method_locks SET released_at = ? WHERE id IN (
-				 SELECT id FROM receiving_method_locks INDEXED BY receiving_method_locks_expiry_idx
-				 WHERE released_at IS NULL AND expires_at <= ?
-				 ORDER BY expires_at LIMIT ?
-				)`,
-			)
-			.bind(now, now, CLEANUP_BATCH_SIZE),
+		lockCleanup,
 		db
 			.prepare(
 				`DELETE FROM rate_limit_counters WHERE id IN (

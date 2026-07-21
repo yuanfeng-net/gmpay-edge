@@ -15,6 +15,13 @@
       "when": 1784629117662,
       "tag": "0001_evm_scan_config",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784634241832,
+      "tag": "0002_immediate_release_mode",
+      "breakpoints": true
     }
   ]
 }

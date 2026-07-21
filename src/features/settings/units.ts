@@ -1,4 +1,5 @@
 const settingUnits = {
+	"orders.fixed_expiry_ms": "milliseconds",
 	"orders.default_expiry_ms": "milliseconds",
 	"orders.max_expiry_ms": "milliseconds",
 	"webhooks.timeout_ms": "milliseconds",

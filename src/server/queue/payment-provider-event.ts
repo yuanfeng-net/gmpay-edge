@@ -11,6 +11,7 @@ import { PaymentAttributionConflictError } from "#/features/payments/server/reco
 import type { PaymentProviderEventMessage } from "#/features/payments/types";
 import type { NormalizedTransaction } from "#/integrations/chains/types";
 import { DomainError } from "#/lib/domain-error";
+import { immediateReleaseModeSql } from "#/server/operational-settings";
 import type { RuntimeConfig } from "#/server/runtime-config";
 
 const processingLeaseMs = 60_000;
@@ -255,12 +256,15 @@ async function loadCandidates(
 			 FROM order_payment_snapshots ops
 			 INDEXED BY order_payment_snapshots_target_nocase_idx
 			 JOIN orders o ON o.id = ops.order_id
-			 JOIN receiving_method_locks lock ON lock.order_id = o.id
+			 LEFT JOIN receiving_method_locks lock ON lock.order_id = o.id
 			  AND lock.receiving_method_id = ops.receiving_method_id
-			  AND lock.asset_id = ops.asset_id AND lock.collision_key IS NOT NULL
+			  AND lock.asset_id = ops.asset_id
 			 WHERE ops.rail_code = ? AND LOWER(ops.target_value) = ?
 			 AND o.status IN (
 			  'pending','confirming','partially_paid','paid','overpaid','expired','cancelled'
+			 ) AND (
+			  ${immediateReleaseModeSql} = 1
+			  OR lock.collision_key IS NOT NULL
 			 ) AND (
 			  (? IS NOT NULL AND LOWER(ops.contract_address) = ?)
 			  OR (? IS NULL AND UPPER(ops.asset_code) = ?)

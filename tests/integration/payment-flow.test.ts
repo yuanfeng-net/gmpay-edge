@@ -769,7 +769,7 @@ describe("D1 payment processing flow", () => {
 		});
 	});
 
-	it("attributes a shared-address transfer by its unique remaining amount", async () => {
+	it("attributes by immutable snapshots after immediate lock release", async () => {
 		const now = Date.now();
 		const target = "TConcurrent1111111111111111111111111";
 		await insertOrderWithSnapshot(db, {
@@ -790,8 +790,11 @@ describe("D1 payment processing flow", () => {
 			expectedAmountUnits: "10000001",
 			now,
 		});
-		await insertAttributionLock(db, "order-attribution-a", "10000000", now);
-		await insertAttributionLock(db, "order-attribution-b", "10000001", now);
+		await db
+			.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.immediate_release_mode', 'true', 0, 0, 0)",
+			)
+			.run();
 
 		const result = await processScannedTransactions(
 			env,
@@ -802,6 +805,7 @@ describe("D1 payment processing flow", () => {
 					to: target,
 					amountUnits: 10_000_001n,
 					confirmations: 2,
+					timestamp: new Date(now),
 				}),
 			],
 		);
@@ -826,6 +830,11 @@ describe("D1 payment processing flow", () => {
 				received_amount_units: "10000001",
 			},
 		]);
+		await db
+			.prepare(
+				"DELETE FROM system_settings WHERE key = 'orders.immediate_release_mode'",
+			)
+			.run();
 	});
 
 	it("does not guess a partial transfer between shared-address orders", async () => {
@@ -849,8 +858,11 @@ describe("D1 payment processing flow", () => {
 			expectedAmountUnits: "12000001",
 			now,
 		});
-		await insertAttributionLock(db, "order-ambiguous-a", "12000000", now);
-		await insertAttributionLock(db, "order-ambiguous-b", "12000001", now);
+		await db
+			.prepare(
+				"INSERT INTO system_settings (key, value, is_secret, created_at, updated_at) VALUES ('orders.immediate_release_mode', 'true', 0, 0, 0)",
+			)
+			.run();
 
 		const result = await processScannedTransactions(env, "order-ambiguous-a", [
 			transaction({
@@ -858,6 +870,7 @@ describe("D1 payment processing flow", () => {
 				to: target,
 				amountUnits: 4_000_000n,
 				confirmations: 2,
+				timestamp: new Date(now),
 			}),
 		]);
 		expect(result).toEqual({
@@ -870,6 +883,11 @@ describe("D1 payment processing flow", () => {
 			)
 			.first<{ count: number }>();
 		expect(count?.count).toBe(0);
+		await db
+			.prepare(
+				"DELETE FROM system_settings WHERE key = 'orders.immediate_release_mode'",
+			)
+			.run();
 	});
 });
 
@@ -985,29 +1003,4 @@ async function insertOrderWithSnapshot(
 				input.now,
 			),
 	]);
-}
-
-async function insertAttributionLock(
-	db: D1Database,
-	orderId: string,
-	expectedAmountUnits: string,
-	now: number,
-) {
-	await db
-		.prepare(
-			`INSERT INTO receiving_method_locks
-			 (id, receiving_method_id, asset_id, order_id, expected_amount_units,
-			  collision_key, expires_at, reusable_at, created_at)
-			 VALUES (?, 'asset-1', 'asset-1', ?, ?, ?, ?, ?, ?)`,
-		)
-		.bind(
-			`lock-${orderId}`,
-			orderId,
-			expectedAmountUnits,
-			`asset-1:asset-1:${expectedAmountUnits}`,
-			now + 900_000,
-			now + 86_400_000,
-			now,
-		)
-		.run();
 }

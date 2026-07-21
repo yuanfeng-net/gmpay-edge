@@ -1,6 +1,7 @@
 import { paymentTransactionId } from "#/features/payments/server/reconciliation";
 import type { NormalizedTransaction } from "#/integrations/chains/types";
 import { DomainError } from "#/lib/domain-error";
+import { immediateReleaseModeSql } from "#/server/operational-settings";
 
 type AttributionCandidate = {
 	order_id: string;
@@ -84,13 +85,21 @@ export async function resolvePaymentTransactionOrder(
 			 AND o.status IN (
 			  'pending','confirming','partially_paid','paid','overpaid','expired','cancelled'
 			 )
-			 AND (lock.collision_key IS NOT NULL OR o.id = ?)
+			 AND (
+			  (${immediateReleaseModeSql} = 0
+			   AND lock.collision_key IS NOT NULL)
+			  OR (${immediateReleaseModeSql} = 1
+			   AND o.created_at <= ? AND o.expires_at >= ?)
+			  OR o.id = ?
+			 )
 			 LIMIT 101`,
 		)
 		.bind(
 			transaction.network,
 			transaction.assetCode,
 			transaction.to,
+			transaction.timestamp.getTime(),
+			transaction.timestamp.getTime(),
 			preferredOrderId ?? "",
 		)
 		.all<AttributionCandidate>();

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { receivingMethodLockModeSwitchStatements } from "#/features/payment-settings/server/receiving-method-locks";
 import {
 	isRuntimeSecret,
 	presentSettingValue,
@@ -30,6 +31,8 @@ const definitions = {
 		z.url().max(2_048),
 		z.string().regex(/^\/api\/site-background(?:\?v=\d+)?$/),
 	]),
+	"orders.immediate_release_mode": z.boolean(),
+	"orders.fixed_expiry_ms": z.number().int().min(60_000).max(604_800_000),
 	"orders.default_expiry_ms": z.number().int().min(60_000).max(86_400_000),
 	"orders.max_expiry_ms": z.number().int().min(300_000).max(604_800_000),
 	"payments.late_payment_policy": z.enum(["accept", "review", "reject"]),
@@ -82,6 +85,8 @@ const defaults: Record<SettingKey, SettingValue> = {
 	"site.support_url": "",
 	"site.background_color": "",
 	"site.background_image_url": "",
+	"orders.immediate_release_mode": false,
+	"orders.fixed_expiry_ms": 900_000,
 	"orders.default_expiry_ms": 900_000,
 	"orders.max_expiry_ms": 86_400_000,
 	"payments.late_payment_policy": "review",
@@ -137,6 +142,7 @@ export async function saveSystemSettings(
 		if (shouldPreserveRuntimeSecret(key, item.value)) return [];
 		return [{ key, value: definitions[key].parse(item.value) as SettingValue }];
 	});
+	const orderSettings = await validateOrderSettings(parsed, dependencies.db);
 
 	const now = Date.now();
 	await dependencies.db.batch([
@@ -154,6 +160,13 @@ export async function saveSystemSettings(
 					now,
 				),
 		),
+		...(orderSettings?.modeChanged
+			? receivingMethodLockModeSwitchStatements(
+					dependencies.db,
+					orderSettings.immediateReleaseMode,
+					now,
+				)
+			: []),
 		dependencies.db
 			.prepare(`INSERT INTO audit_logs
 			(id, actor_user_id, action, target_type, target_id, request_id, ip_address, after, created_at)
@@ -170,6 +183,47 @@ export async function saveSystemSettings(
 	if (parsed.some(({ key }) => key.startsWith("site.")))
 		await invalidateSiteBrandCache(dependencies.cache);
 	return { updated: parsed.map((item) => item.key) };
+}
+
+async function validateOrderSettings(
+	parsed: Array<{ key: SettingKey; value: SettingValue }>,
+	db: D1Database,
+) {
+	if (!parsed.some(({ key }) => key.startsWith("orders."))) return undefined;
+	const rows = await db
+		.prepare(
+			"SELECT key, value FROM system_settings WHERE key IN ('orders.immediate_release_mode','orders.default_expiry_ms','orders.max_expiry_ms')",
+		)
+		.all<{ key: SettingKey; value: string }>();
+	const effective = new Map<SettingKey, SettingValue>([
+		[
+			"orders.immediate_release_mode",
+			defaults["orders.immediate_release_mode"],
+		],
+		["orders.default_expiry_ms", defaults["orders.default_expiry_ms"]],
+		["orders.max_expiry_ms", defaults["orders.max_expiry_ms"]],
+	]);
+	for (const row of rows.results)
+		effective.set(row.key, parseStored(row.value, defaults[row.key]));
+	const previousImmediateReleaseMode =
+		effective.get("orders.immediate_release_mode") === true;
+	for (const item of parsed) effective.set(item.key, item.value);
+	const immediateReleaseMode =
+		effective.get("orders.immediate_release_mode") === true;
+	if (
+		!immediateReleaseMode &&
+		Number(effective.get("orders.default_expiry_ms")) >
+			Number(effective.get("orders.max_expiry_ms"))
+	)
+		throw new DomainError(
+			"invalid_settings",
+			400,
+			"Default order expiry must not exceed maximum order expiry",
+		);
+	return {
+		immediateReleaseMode,
+		modeChanged: immediateReleaseMode !== previousImmediateReleaseMode,
+	};
 }
 
 export async function loadCheckoutAmountDecimals(db: D1Database) {

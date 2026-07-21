@@ -9,6 +9,7 @@ export type PaymentAllocationInput = {
 	orderAmountUsdMinor?: string;
 	expiresAt: number;
 	reusableAt?: number;
+	immediateReleaseMode?: boolean;
 	rate?: {
 		source?: string;
 		raw?: string;
@@ -112,7 +113,11 @@ export async function allocateReceivingMethodAndSnapshot(
 		input.expiresAt,
 		input.reusableAt ?? input.expiresAt + 24 * 3_600_000,
 	);
-	await releaseExpiredReceivingMethodLocks(db, now);
+	await releaseExpiredReceivingMethodLocks(
+		db,
+		now,
+		input.immediateReleaseMode ?? false,
+	);
 	await clearReusableReceivingMethodLockKeys(db, now);
 	const method = await db
 		.prepare(
@@ -340,20 +345,23 @@ export async function releaseReceivingMethodLock(
 		)
 		.bind(now, orderId)
 		.run();
-	return result?.meta.changes ?? 0;
+	return (result.meta.changes ?? 0) > 0 ? 1 : 0;
 }
 
 async function releaseExpiredReceivingMethodLocks(
 	db: D1Database,
 	now = Date.now(),
+	immediateReleaseMode = false,
 ) {
 	const result = await db
 		.prepare(
-			"UPDATE receiving_method_locks SET released_at = ? WHERE released_at IS NULL AND expires_at <= ?",
+			immediateReleaseMode
+				? "DELETE FROM receiving_method_locks WHERE expires_at <= ?"
+				: "UPDATE receiving_method_locks SET released_at = ? WHERE released_at IS NULL AND expires_at <= ?",
 		)
-		.bind(now, now)
+		.bind(...(immediateReleaseMode ? [now] : [now, now]))
 		.run();
-	return result?.meta.changes ?? 0;
+	return result.meta.changes ?? 0;
 }
 
 export async function clearReusableReceivingMethodLockKeys(
@@ -380,6 +388,33 @@ export async function clearReusableReceivingMethodLockKeys(
 			.bind(now),
 	]);
 	return result?.meta.changes ?? 0;
+}
+
+export function receivingMethodLockModeSwitchStatements(
+	db: D1Database,
+	immediateReleaseMode: boolean,
+	now: number,
+) {
+	if (immediateReleaseMode)
+		return [
+			db
+				.prepare(
+					"DELETE FROM receiving_method_locks WHERE released_at IS NOT NULL OR expires_at <= ?",
+				)
+				.bind(now),
+			db.prepare(
+				"UPDATE receiving_method_locks SET reusable_at = expires_at WHERE released_at IS NULL",
+			),
+		];
+	return [
+		db.prepare(
+			`UPDATE receiving_method_locks
+			 SET reusable_at = expires_at + COALESCE(
+			  (SELECT json_extract(value, '$') FROM system_settings
+			   WHERE key = 'payments.reorg_monitor_ms'), 86400000)
+			 WHERE released_at IS NULL`,
+		),
+	];
 }
 
 function parseAmountUnits(value: string) {

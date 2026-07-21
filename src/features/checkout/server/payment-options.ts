@@ -235,7 +235,10 @@ export async function selectCheckoutPaymentOption(
 		).toString(),
 		...(orderAmountUsdMinor ? { orderAmountUsdMinor } : {}),
 		expiresAt: order.expires_at,
-		reusableAt: order.expires_at + settings.reorgMonitorMs,
+		reusableAt: settings.immediateReleaseMode
+			? order.expires_at
+			: order.expires_at + settings.reorgMonitorMs,
+		immediateReleaseMode: settings.immediateReleaseMode,
 		now,
 		rate: {
 			source: quote.source,
