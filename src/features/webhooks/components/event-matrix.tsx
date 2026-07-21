@@ -13,6 +13,7 @@ import {
 	webhookEventLabel,
 } from "#/features/webhooks/event-label";
 import { webhookEventTypes } from "#/features/webhooks/types";
+import { cn } from "#/lib/utils";
 
 const groups = [
 	{
@@ -30,10 +31,12 @@ export function WebhookEventMatrix({
 	onChange,
 	selectionMode = "multiple",
 	additionalGroups = [],
+	flatItems = false,
 }: {
 	value: readonly string[];
 	onChange: (value: string[]) => void;
 	selectionMode?: "multiple" | "single";
+	flatItems?: boolean;
 	additionalGroups?: ReadonlyArray<{
 		id: string;
 		label: ReactNode;
@@ -55,7 +58,7 @@ export function WebhookEventMatrix({
 	return (
 		<div className="overflow-hidden rounded-lg border px-3">
 			<div className="border-b py-3">
-				<div className="rounded-md border p-3">
+				<div className={cn(!flatItems && "rounded-md border p-3")}>
 					<Checkbox
 						value={value.includes("*")}
 						onChange={(checked) =>
@@ -68,7 +71,7 @@ export function WebhookEventMatrix({
 					</Checkbox>
 				</div>
 			</div>
-			<Accordion type="multiple" defaultValue={["order"]}>
+			<Accordion type="multiple" defaultValue={[]}>
 				{[
 					...groups.map((group) => ({
 						...group,
@@ -84,7 +87,10 @@ export function WebhookEventMatrix({
 						<AccordionTrigger>{group.label}</AccordionTrigger>
 						<AccordionContent className="grid gap-3 sm:grid-cols-2">
 							{group.events.map((event) => (
-								<div className="rounded-md border p-3" key={event.value}>
+								<div
+									className={cn(flatItems ? "py-1" : "rounded-md border p-3")}
+									key={event.value}
+								>
 									<Checkbox
 										value={value.includes(event.value)}
 										onChange={(checked) =>

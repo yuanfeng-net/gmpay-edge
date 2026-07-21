@@ -11,7 +11,6 @@ import {
 	roles,
 	systemSettings,
 	telegramBotCommands,
-	telegramMessageTemplates,
 	user,
 	userRoles,
 } from "#/db/schema";
@@ -27,8 +26,8 @@ import {
 } from "#/features/payment-settings/server/exchange-rates";
 import {
 	defaultTelegramCommands,
+	defaultTelegramCommandTranslations,
 	defaultTelegramSettings,
-	defaultTelegramTemplates,
 } from "#/features/telegram/defaults";
 import { DomainError } from "#/lib/domain-error";
 import type { AppDb } from "#/server/db.server";
@@ -142,16 +141,6 @@ export async function installSystem(
 					updatedAt: now,
 				}),
 			),
-			...defaultTelegramTemplates.map((template) =>
-				db.insert(telegramMessageTemplates).values({
-					id: template.id,
-					name: template.name,
-					translations: template.translations,
-					enabled: true,
-					createdAt: now,
-					updatedAt: now,
-				}),
-			),
 			...defaultTelegramCommands.map((command, index) =>
 				db.insert(telegramBotCommands).values({
 					id: `telegram-command-${command.command}-default`,
@@ -163,7 +152,9 @@ export async function installSystem(
 					descriptionZhTw: command.descriptions["zh-TW"],
 					descriptionZhCn: command.descriptions["zh-CN"],
 					handlerType: command.handlerType,
-					templateId: `telegram-template-command-${command.command}`,
+					templateTranslations: defaultTelegramCommandTranslations(
+						command.command,
+					),
 					scope: "default",
 					sortOrder: (index + 1) * 10,
 					enabled: true,

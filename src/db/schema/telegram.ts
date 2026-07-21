@@ -6,7 +6,6 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { supportedLocales } from "#/lib/locales";
-import { users } from "./auth";
 import { timestamps } from "./common";
 
 export const telegramBots = sqliteTable("telegram_bots", {
@@ -19,28 +18,6 @@ export const telegramBots = sqliteTable("telegram_bots", {
 	...timestamps,
 });
 
-export const telegramBindings = sqliteTable(
-	"telegram_bindings",
-	{
-		id: text("id").primaryKey(),
-		botId: text("bot_id")
-			.notNull()
-			.references(() => telegramBots.id),
-		userId: text("user_id").references(() => users.id, {
-			onDelete: "set null",
-		}),
-		telegramUserId: text("telegram_user_id").notNull(),
-		...timestamps,
-	},
-	(table) => [
-		uniqueIndex("telegram_bindings_bot_user_uidx").on(
-			table.botId,
-			table.telegramUserId,
-		),
-		index("telegram_bindings_created_idx").on(table.createdAt, table.id),
-	],
-);
-
 export const telegramNotificationBindings = sqliteTable(
 	"telegram_notification_bindings",
 	{
@@ -48,11 +25,11 @@ export const telegramNotificationBindings = sqliteTable(
 		botId: text("bot_id")
 			.notNull()
 			.references(() => telegramBots.id, { onDelete: "cascade" }),
-		templateId: text("template_id").references(
-			() => telegramMessageTemplates.id,
-			{ onDelete: "set null" },
-		),
+		templateTranslations: text("template_translations", { mode: "json" })
+			.$type<Record<(typeof supportedLocales)[number], string>>()
+			.notNull(),
 		name: text("name").notNull(),
+		targetUsername: text("target_username"),
 		targetType: text("target_type", {
 			enum: ["private", "group", "channel"],
 		}).notNull(),
@@ -74,20 +51,6 @@ export const telegramNotificationBindings = sqliteTable(
 	],
 );
 
-export const telegramMessageTemplates = sqliteTable(
-	"telegram_message_templates",
-	{
-		id: text("id").primaryKey(),
-		name: text("name").notNull(),
-		translations: text("translations", { mode: "json" })
-			.$type<Record<(typeof supportedLocales)[number], string>>()
-			.notNull(),
-		enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-		...timestamps,
-	},
-	(table) => [index("telegram_templates_enabled_idx").on(table.enabled)],
-);
-
 export const telegramBotCommands = sqliteTable(
 	"telegram_bot_commands",
 	{
@@ -102,10 +65,9 @@ export const telegramBotCommands = sqliteTable(
 		handlerType: text("handler_type", {
 			enum: ["start", "help", "new", "status", "template"],
 		}).notNull(),
-		templateId: text("template_id").references(
-			() => telegramMessageTemplates.id,
-			{ onDelete: "set null" },
-		),
+		templateTranslations: text("template_translations", { mode: "json" })
+			.$type<Record<(typeof supportedLocales)[number], string>>()
+			.notNull(),
 		scope: text("scope", {
 			enum: ["default", "private", "group", "admin"],
 		})

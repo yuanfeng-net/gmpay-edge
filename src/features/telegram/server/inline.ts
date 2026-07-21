@@ -10,15 +10,16 @@ import {
 } from "#/features/orders/server/create";
 import { quoteWithExchangeRate } from "#/features/payment-settings/server/rates";
 import type { PaymentScanMessage } from "#/features/payments/types";
+import { defaultTelegramNotificationTranslations } from "#/features/telegram/defaults";
 import {
 	createTelegramApi,
 	TelegramApiRequestError,
 } from "#/features/telegram/server/client";
-import { parseTelegramTemplateTranslations } from "#/features/telegram/server/template-catalog";
 import {
 	renderTelegramTemplate,
 	telegramTemplateParseMode,
 } from "#/features/telegram/template";
+import { parseTelegramTemplateTranslations } from "#/features/telegram/template-translations";
 import type { SupportedLocale } from "#/lib/locales";
 import { unitsToDecimal } from "#/lib/money";
 import { minorToDecimal } from "#/lib/units";
@@ -30,9 +31,18 @@ type TelegramUser = {
 	language_code?: string;
 	username?: string;
 	first_name?: string;
+	last_name?: string;
+};
+type TelegramChat = {
+	id: number;
+	type: "private" | "group" | "supergroup" | "channel";
+	title?: string;
+	username?: string;
+	first_name?: string;
+	last_name?: string;
 };
 type TelegramMessage = {
-	chat: { id: number };
+	chat: TelegramChat;
 	from?: TelegramUser;
 	text?: string;
 };
@@ -49,12 +59,21 @@ type TelegramCallbackQuery = {
 	data?: string;
 	message?: TelegramMessage;
 };
+type TelegramChatMember = { status: string; is_member?: boolean };
+type TelegramChatMemberUpdated = {
+	chat: TelegramChat;
+	from: TelegramUser;
+	date: number;
+	old_chat_member: TelegramChatMember;
+	new_chat_member: TelegramChatMember;
+};
 export type TelegramUpdate = {
 	update_id: number;
 	message?: TelegramMessage;
 	inline_query?: TelegramInlineQuery;
 	chosen_inline_result?: TelegramChosenInlineResult;
 	callback_query?: TelegramCallbackQuery;
+	my_chat_member?: TelegramChatMemberUpdated;
 };
 
 type OrderRow = {
@@ -77,6 +96,10 @@ export async function processTelegramUpdate(input: {
 	paymentQueue?: Queue<PaymentScanMessage>;
 	update: TelegramUpdate;
 }) {
+	if (input.update.my_chat_member) {
+		await updateTelegramTargetMembership(input, input.update.my_chat_member);
+		return;
+	}
 	if (input.update.chosen_inline_result) {
 		await createChosenInlineOrder(input, input.update.chosen_inline_result);
 		return;
@@ -227,7 +250,7 @@ async function createChosenInlineOrder(
 	const locale = telegramLocale(chosen.from);
 	const binding = await context.db
 		.prepare(
-			"SELECT id FROM telegram_bindings WHERE bot_id = ? AND telegram_user_id = ? LIMIT 1",
+			"SELECT id FROM telegram_notification_bindings WHERE bot_id = ? AND target_type = 'private' AND target_id = ? AND enabled = 1 LIMIT 1",
 		)
 		.bind(context.botId, telegramUserId)
 		.first<{ id: string }>();
@@ -523,14 +546,16 @@ async function answerMessage(
 	const command = await resolveBotCommand(
 		context.db,
 		commandName.toLowerCase(),
-		message.chat.id < 0 ? "group" : "private",
+		message.chat.type === "private" ? "private" : "group",
 	);
 	if (!command) return;
-	if (command.handler_type === "start" && message.from)
+	if (
+		command.handler_type === "start" &&
+		message.chat.type === "private" &&
+		message.from
+	)
 		await registerTelegramUser(context, message.from);
-	const template = command.template_id
-		? await findCommandTemplate(context.db, command.template_id, locale)
-		: undefined;
+	const template = findCommandTemplate(command.template_translations, locale);
 	async function sendTemplate() {
 		if (!template) return false;
 		await telegramCall(context.token, "sendMessage", {
@@ -556,7 +581,7 @@ async function answerMessage(
 			});
 		return;
 	}
-	if (command.handler_type === "template" && command.template_id) {
+	if (command.handler_type === "template") {
 		await sendTemplate();
 		return;
 	}
@@ -593,29 +618,22 @@ async function registerTelegramUser(
 ) {
 	const now = Date.now();
 	const telegramUserId = String(user.id);
-	await context.db
-		.prepare(
-			`INSERT INTO telegram_bindings
-			 (id, bot_id, user_id, telegram_user_id, created_at, updated_at)
-			 VALUES (?, ?, NULL, ?, ?, ?)
-			 ON CONFLICT(bot_id, telegram_user_id) DO UPDATE SET updated_at = excluded.updated_at`,
-		)
-		.bind(crypto.randomUUID(), context.botId, telegramUserId, now, now)
-		.run();
 	const defaults = await loadTelegramSubscriptionDefaults(context.db);
-	if (!defaults.autoSubscribe) return;
 	await context.db
 		.prepare(
 			`INSERT INTO telegram_notification_bindings
-			 (id, bot_id, template_id, name, target_type, target_id, locale, events, enabled, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, 'private', ?, ?, ?, 0, ?, ?)
-			 ON CONFLICT(bot_id, target_id) DO NOTHING`,
+			 (id, bot_id, template_translations, name, target_username, target_type, target_id, locale, events, enabled, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, 'private', ?, ?, ?, 0, ?, ?)
+			 ON CONFLICT(bot_id, target_id) DO UPDATE SET
+			 name = excluded.name, target_username = excluded.target_username,
+			 updated_at = excluded.updated_at`,
 		)
 		.bind(
 			crypto.randomUUID(),
 			context.botId,
-			defaults.templateId,
-			user.username ? `@${user.username}` : user.first_name || telegramUserId,
+			JSON.stringify(defaults.templateTranslations),
+			telegramUserName(user),
+			user.username ?? null,
 			telegramUserId,
 			telegramLocale(user),
 			JSON.stringify(defaults.events),
@@ -625,25 +643,134 @@ async function registerTelegramUser(
 		.run();
 }
 
+async function updateTelegramTargetMembership(
+	context: Parameters<typeof processTelegramUpdate>[0],
+	member: TelegramChatMemberUpdated,
+) {
+	if (member.chat.type === "private") return;
+	const targetType =
+		member.chat.type === "channel" ? "channel" : ("group" as const);
+	const targetId = String(member.chat.id);
+	const now = Date.now();
+	const current = await context.db
+		.prepare(
+			"SELECT id, enabled FROM telegram_notification_bindings WHERE bot_id = ? AND target_id = ? LIMIT 1",
+		)
+		.bind(context.botId, targetId)
+		.first<{ id: string; enabled: number }>();
+	if (!telegramMembershipIsActive(member.new_chat_member)) {
+		if (!current?.enabled) return;
+		await context.db.batch([
+			context.db
+				.prepare(
+					"UPDATE telegram_notification_bindings SET enabled = 0, updated_at = ? WHERE id = ?",
+				)
+				.bind(now, current.id),
+			telegramTargetLifecycleAudit(
+				context.db,
+				"telegram_target.auto_disabled",
+				current.id,
+				targetType,
+				now,
+			),
+		]);
+		return;
+	}
+	const defaults = await loadTelegramSubscriptionDefaults(context.db);
+	await context.db
+		.prepare(
+			`INSERT INTO telegram_notification_bindings
+			 (id, bot_id, template_translations, name, target_username, target_type, target_id, locale, events, enabled, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, 'en-US', ?, 0, ?, ?)
+			 ON CONFLICT(bot_id, target_id) DO UPDATE SET
+			 name = excluded.name, target_username = excluded.target_username,
+			 target_type = excluded.target_type, updated_at = excluded.updated_at`,
+		)
+		.bind(
+			crypto.randomUUID(),
+			context.botId,
+			JSON.stringify(defaults.templateTranslations),
+			telegramChatName(member.chat),
+			member.chat.username ?? null,
+			targetType,
+			targetId,
+			JSON.stringify(defaults.events),
+			now,
+			now,
+		)
+		.run();
+	if (!current) {
+		const created = await context.db
+			.prepare(
+				"SELECT id FROM telegram_notification_bindings WHERE bot_id = ? AND target_id = ? LIMIT 1",
+			)
+			.bind(context.botId, targetId)
+			.first<{ id: string }>();
+		if (created)
+			await telegramTargetLifecycleAudit(
+				context.db,
+				"telegram_target.discovered",
+				created.id,
+				targetType,
+				now,
+			).run();
+	}
+}
+
+function telegramTargetLifecycleAudit(
+	db: D1Database,
+	action: string,
+	targetId: string,
+	targetType: "group" | "channel",
+	now: number,
+) {
+	return db
+		.prepare(
+			"INSERT INTO audit_logs (id, action, target_type, target_id, after, created_at) VALUES (?, ?, 'telegram_notification_target', ?, ?, ?)",
+		)
+		.bind(
+			crypto.randomUUID(),
+			action,
+			targetId,
+			JSON.stringify({ targetType }),
+			now,
+		);
+}
+
+function telegramMembershipIsActive(member: TelegramChatMember) {
+	return (
+		member.status === "creator" ||
+		member.status === "administrator" ||
+		member.status === "member" ||
+		(member.status === "restricted" && member.is_member === true)
+	);
+}
+
+function telegramUserName(user: TelegramUser) {
+	const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ");
+	return fullName || (user.username ? `@${user.username}` : String(user.id));
+}
+
+function telegramChatName(chat: TelegramChat) {
+	return chat.title || (chat.username ? `@${chat.username}` : String(chat.id));
+}
+
 async function loadTelegramSubscriptionDefaults(db: D1Database) {
 	const rows = await db
 		.prepare(
-			"SELECT key, value FROM system_settings WHERE key IN ('telegram.auto_subscribe_on_start', 'telegram.default_events', 'telegram.default_template_id')",
+			"SELECT key, value FROM system_settings WHERE key IN ('telegram.default_events', 'telegram.default_template_translations')",
 		)
 		.all<{ key: string; value: string }>();
 	const values = new Map(rows.results.map((row) => [row.key, row.value]));
 	return {
-		autoSubscribe: parseSetting(
-			values.get("telegram.auto_subscribe_on_start"),
-			false,
-		),
 		events: parseSetting<string[]>(values.get("telegram.default_events"), [
-			"order.paid",
-			"order.expired",
+			"*",
 		]),
-		templateId: parseSetting<string>(
-			values.get("telegram.default_template_id"),
-			"telegram-template-notifications",
+		templateTranslations: parseTelegramTemplateTranslations(
+			parseSetting(
+				values.get("telegram.default_template_translations"),
+				defaultTelegramNotificationTranslations,
+			),
 		),
 	};
 }
@@ -665,7 +792,7 @@ async function resolveBotCommand(
 ) {
 	return db
 		.prepare(
-			`SELECT command, handler_type, template_id FROM telegram_bot_commands
+			`SELECT command, handler_type, template_translations FROM telegram_bot_commands
 			 WHERE command = ? AND enabled = 1
 			 AND scope IN (?, 'default')
 			 ORDER BY CASE WHEN scope = ? THEN 0 ELSE 1 END LIMIT 1`,
@@ -674,24 +801,12 @@ async function resolveBotCommand(
 		.first<{
 			command: string;
 			handler_type: "start" | "help" | "new" | "status" | "template";
-			template_id: string | null;
+			template_translations: unknown;
 		}>();
 }
 
-async function findCommandTemplate(
-	db: D1Database,
-	templateId: string,
-	locale: TelegramLocale,
-) {
-	const template = await db
-		.prepare(
-			`SELECT translations FROM telegram_message_templates
-			 WHERE enabled = 1 AND id = ? LIMIT 1`,
-		)
-		.bind(templateId)
-		.first<{ translations: unknown }>();
-	if (!template) return undefined;
-	const translations = parseTelegramTemplateTranslations(template.translations);
+function findCommandTemplate(value: unknown, locale: TelegramLocale) {
+	const translations = parseTelegramTemplateTranslations(value);
 	return translations[locale] || translations["en-US"] || undefined;
 }
 
@@ -773,10 +888,11 @@ async function findOrders(
 			 o.currency, o.currency_decimals, ops.expected_amount_units,
 			 ops.decimals, ops.asset_code, ops.rail_code AS network,
 			 o.expires_at
-			 FROM telegram_bindings tb
+			 FROM telegram_notification_bindings tb
 			 CROSS JOIN orders o
 			 JOIN order_payment_snapshots ops ON ops.order_id = o.id
-			 WHERE tb.bot_id = ? AND tb.telegram_user_id = ?
+			 WHERE tb.bot_id = ? AND tb.target_type = 'private'
+			 AND tb.target_id = ? AND tb.enabled = 1
 			 AND (o.id = ? OR o.external_order_id LIKE ? ESCAPE '\\')
 			 ORDER BY o.created_at DESC LIMIT ?`,
 		)

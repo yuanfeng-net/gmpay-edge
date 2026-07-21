@@ -1,9 +1,9 @@
 import { createTelegramApi } from "#/features/telegram/server/client";
-import { parseTelegramTemplateTranslations } from "#/features/telegram/server/template-catalog";
 import {
 	renderTelegramTemplate,
 	telegramTemplateParseMode,
 } from "#/features/telegram/template";
+import { parseTelegramTemplateTranslations } from "#/features/telegram/template-translations";
 import type { SupportedLocale } from "#/lib/locales";
 import { decryptSecret } from "#/lib/secrets";
 import { loadRuntimeConfig } from "#/server/runtime-config";
@@ -11,16 +11,11 @@ import { loadRuntimeConfig } from "#/server/runtime-config";
 type TelegramTarget = {
 	target_id: string;
 	bot_id: string;
-	template_id: string | null;
+	template_translations: unknown;
 	recipient_id: string;
 	token_encrypted: string;
 	locale: SupportedLocale;
 	events: string;
-};
-
-type TelegramTemplate = {
-	template_id: string;
-	translations: unknown;
 };
 
 export async function notifyTelegram(
@@ -28,23 +23,15 @@ export async function notifyTelegram(
 	eventType: string,
 	payload: Record<string, unknown>,
 ) {
-	const [targets, templates] = await Promise.all([
-		db
-			.prepare(
-				`SELECT target.id AS target_id, target.bot_id, target.template_id, target.target_id AS recipient_id,
+	const targets = await db
+		.prepare(
+			`SELECT target.id AS target_id, target.bot_id, target.template_translations, target.target_id AS recipient_id,
 		 target.locale, target.events, b.token_encrypted
 		 FROM telegram_notification_bindings target
 		 JOIN telegram_bots b ON b.id = target.bot_id
 		 WHERE b.enabled = 1 AND target.enabled = 1`,
-			)
-			.all<TelegramTarget>(),
-		db
-			.prepare(
-				`SELECT id AS template_id, translations
-			 FROM telegram_message_templates WHERE enabled = 1`,
-			)
-			.all<TelegramTemplate>(),
-	]);
+		)
+		.all<TelegramTarget>();
 	const selected = targets.results.filter((target) => {
 		const events = parseEvents(target.events);
 		return events.includes("*") || events.includes(eventType);
@@ -56,8 +43,7 @@ export async function notifyTelegram(
 		selected.map(async (target) => {
 			const token = await decryptSecret(target.token_encrypted, configSecret);
 			const template = selectTelegramTemplate(
-				templates.results,
-				target.template_id,
+				target.template_translations,
 				target.locale,
 			);
 			const text = template
@@ -148,16 +134,10 @@ const notificationLabels = {
 } as const;
 
 export function selectTelegramTemplate(
-	templates: TelegramTemplate[],
-	templateId: string | null,
+	value: unknown,
 	locale: TelegramTarget["locale"],
 ) {
-	if (!templateId) return undefined;
-	const template = templates.find(
-		(candidate) => candidate.template_id === templateId,
-	);
-	if (!template) return undefined;
-	const translations = parseTelegramTemplateTranslations(template.translations);
+	const translations = parseTelegramTemplateTranslations(value);
 	const content = translations[locale] || translations["en-US"];
 	return content ? { content } : undefined;
 }

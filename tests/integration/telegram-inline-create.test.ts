@@ -8,7 +8,10 @@ import {
 	it,
 	vi,
 } from "vitest";
-import { reconcileTelegramDefaults } from "#/features/telegram/defaults";
+import {
+	defaultTelegramNotificationTranslations,
+	reconcileTelegramDefaults,
+} from "#/features/telegram/defaults";
 import { processTelegramUpdate } from "#/features/telegram/server/inline";
 import { persistTelegramDeliveryFailures } from "#/features/telegram/server/telegram";
 import {
@@ -276,7 +279,7 @@ describe("Telegram Inline payment creation", () => {
 					id: "callback-check",
 					from: { id: 12345, language_code: "zh-CN" },
 					data: `check:${order?.id}`,
-					message: { chat: { id: 12345 } },
+					message: { chat: { id: 12345, type: "private" } },
 				},
 			},
 		} as const;
@@ -439,7 +442,7 @@ describe("Telegram Inline payment creation", () => {
 				update: {
 					update_id: 60 + index,
 					message: {
-						chat: { id: 60001 },
+						chat: { id: 60001, type: "private" },
 						from: { id: 60001, language_code: "zh-cn" },
 						text: `/${command}`,
 					},
@@ -476,18 +479,18 @@ describe("Telegram Inline payment creation", () => {
 				update: {
 					update_id: 70,
 					message: {
-						chat: { id: 60002 },
+						chat: { id: 60002, type: "private" },
 						from: { id: 60002 },
 						text: "/start",
 					},
 				},
 			});
-			const binding = await db
+			const target = await db
 				.prepare(
-					"SELECT id FROM telegram_bindings WHERE bot_id = 'bot-a' AND telegram_user_id = '60002'",
+					"SELECT id FROM telegram_notification_bindings WHERE bot_id = 'bot-a' AND target_id = '60002'",
 				)
 				.first();
-			expect(binding).toBeNull();
+			expect(target).toBeNull();
 			expect(fetchMock).not.toHaveBeenCalled();
 			expect(counters).toMatchObject({
 				d1Prepare: 1,
@@ -507,15 +510,6 @@ describe("Telegram Inline payment creation", () => {
 	});
 
 	it("creates a pending private target on /start and requires admin enablement", async () => {
-		// The production default is safe-off. Enable automatic provisioning here
-		// only to verify that the generated target remains pending until an
-		// administrator explicitly enables it in the dashboard.
-		await db
-			.prepare(
-				"UPDATE system_settings SET value = 'true', updated_by = NULL, updated_at = ? WHERE key = 'telegram.auto_subscribe_on_start'",
-			)
-			.bind(Date.now())
-			.run();
 		vi.stubGlobal(
 			"fetch",
 			vi
@@ -532,7 +526,7 @@ describe("Telegram Inline payment creation", () => {
 			update: {
 				update_id: 80,
 				message: {
-					chat: { id: 54321 },
+					chat: { id: 54321, type: "private" as const },
 					from: {
 						id: 54321,
 						language_code: "zh-cn",
@@ -549,19 +543,14 @@ describe("Telegram Inline payment creation", () => {
 				update: { ...input.update, update_id: 81 },
 			}),
 		]);
-		const binding = await db
-			.prepare(
-				"SELECT user_id, COUNT(*) AS count FROM telegram_bindings WHERE bot_id = 'bot-a' AND telegram_user_id = '54321'",
-			)
-			.first<{ user_id: string | null; count: number }>();
-		expect(binding).toEqual({ user_id: null, count: 1 });
 		const target = await db
 			.prepare(
-				"SELECT name, template_id, target_type, locale, events, enabled, COUNT(*) AS count FROM telegram_notification_bindings WHERE bot_id = 'bot-a' AND target_id = '54321'",
+				"SELECT name, target_username, template_translations, target_type, locale, events, enabled, COUNT(*) AS count FROM telegram_notification_bindings WHERE bot_id = 'bot-a' AND target_id = '54321'",
 			)
 			.first<{
 				name: string;
-				template_id: string;
+				target_username: string;
+				template_translations: string;
 				target_type: string;
 				locale: string;
 				events: string;
@@ -570,16 +559,96 @@ describe("Telegram Inline payment creation", () => {
 			}>();
 		expect(target).toMatchObject({
 			name: "@payer",
+			target_username: "payer",
 			target_type: "private",
-			template_id: "telegram-template-notifications",
 			locale: "zh-CN",
 			enabled: 0,
 			count: 1,
 		});
-		expect(JSON.parse(target?.events ?? "[]")).toEqual([
-			"order.paid",
-			"order.expired",
-		]);
+		expect(JSON.parse(target?.template_translations ?? "{}")).toEqual(
+			defaultTelegramNotificationTranslations,
+		);
+		expect(JSON.parse(target?.events ?? "[]")).toEqual(["*"]);
+		const before = await db
+			.prepare("SELECT COUNT(*) AS count FROM orders")
+			.first<{ count: number }>();
+		await processTelegramUpdate({
+			db,
+			botId: "bot-a",
+			token: "bot-token",
+			baseUrl: "https://pay.example",
+			update: {
+				update_id: 82,
+				chosen_inline_result: {
+					result_id: "create-payment",
+					from: { id: 54321 },
+					query: "new 1 USD USDT tron Pending",
+				},
+			},
+		});
+		const after = await db
+			.prepare("SELECT COUNT(*) AS count FROM orders")
+			.first<{ count: number }>();
+		expect(after?.count).toBe(before?.count);
+	});
+
+	it("discovers group targets and disables them when the bot leaves", async () => {
+		const memberUpdate = {
+			db,
+			botId: "bot-a",
+			token: "bot-token",
+			baseUrl: "https://pay.example",
+			update: {
+				update_id: 90,
+				my_chat_member: {
+					chat: {
+						id: -100123,
+						type: "supergroup" as const,
+						title: "Operations",
+						username: "ops_group",
+					},
+					from: { id: 54321 },
+					date: 1,
+					old_chat_member: { status: "left" },
+					new_chat_member: { status: "member" },
+				},
+			},
+		};
+		await processTelegramUpdate(memberUpdate);
+		const discovered = await db
+			.prepare(
+				"SELECT name, target_username, target_type, enabled FROM telegram_notification_bindings WHERE bot_id = 'bot-a' AND target_id = '-100123'",
+			)
+			.first();
+		expect(discovered).toEqual({
+			name: "Operations",
+			target_username: "ops_group",
+			target_type: "group",
+			enabled: 0,
+		});
+		await db
+			.prepare(
+				"UPDATE telegram_notification_bindings SET enabled = 1 WHERE bot_id = 'bot-a' AND target_id = '-100123'",
+			)
+			.run();
+		await processTelegramUpdate({
+			...memberUpdate,
+			update: {
+				...memberUpdate.update,
+				update_id: 91,
+				my_chat_member: {
+					...memberUpdate.update.my_chat_member,
+					old_chat_member: { status: "member" },
+					new_chat_member: { status: "left" },
+				},
+			},
+		});
+		const removed = await db
+			.prepare(
+				"SELECT enabled FROM telegram_notification_bindings WHERE bot_id = 'bot-a' AND target_id = '-100123'",
+			)
+			.first();
+		expect(removed).toEqual({ enabled: 0 });
 	});
 });
 
@@ -623,8 +692,8 @@ async function seed(db: D1Database) {
 			.bind(now, now),
 		db
 			.prepare(
-				"INSERT INTO telegram_bindings (id, bot_id, telegram_user_id, created_at, updated_at) VALUES ('binding-a', 'bot-a', '12345', ?, ?)",
+				"INSERT INTO telegram_notification_bindings (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('11111111-1111-4111-8111-111111111112', 'bot-a', ?, 'Payer', 'private', '12345', 'en-US', '[]', 1, ?, ?)",
 			)
-			.bind(now, now),
+			.bind(JSON.stringify(defaultTelegramNotificationTranslations), now, now),
 	]);
 }

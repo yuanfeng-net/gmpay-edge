@@ -63,7 +63,7 @@ describe("Telegram webhook request budget", () => {
 		const response = await handleTelegramWebhookRequest(
 			request("telegram-valid", webhookSecret, {
 				update_id: 1,
-				message: { chat: { id: 1 } },
+				message: { chat: { id: 1, type: "private" } },
 			}),
 			botId,
 			{ DB: instrumentD1(db, counters) } as Env,

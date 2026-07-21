@@ -6,7 +6,7 @@ import { Settings2, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
-import { formBooleanValue, ModalForm } from "#/components/pro/form";
+import { ModalForm } from "#/components/pro/form";
 import { ProTable, type ProTableState } from "#/components/pro/table";
 import { Badge } from "#/components/ui/badge";
 import { Switch } from "#/components/ui/switch";
@@ -17,8 +17,8 @@ import {
 	setTelegramNotificationEnabledFn,
 	type TelegramNotificationBindingRecord,
 	updateTelegramDefaultsFn,
+	updateTelegramNotificationBindingFn,
 } from "#/features/telegram/server/notifications-admin";
-import type { TelegramTemplateRecord } from "#/features/telegram/server/template-catalog";
 import { WebhookEventMatrix } from "#/features/webhooks/components/event-matrix";
 import { webhookEventLabel } from "#/features/webhooks/event-label";
 import { PageHeader } from "#/layouts/components/page-header";
@@ -34,25 +34,25 @@ import {
 	isWebhookEventType,
 	showTelegramError,
 	telegramOptionLabel,
+	templateContentFormField,
+	templateTranslations,
 } from "./form-fields";
 
 type NotificationConfiguration = {
 	bots: { id: string; name: string }[];
-	templates: TelegramTemplateRecord[];
 	defaults: {
-		autoSubscribe: boolean;
 		events: string[];
-		templateId: string;
+		templateTranslations: Record<SupportedLocale, string>;
 	};
 };
 
 const emptyConfiguration: NotificationConfiguration = {
 	bots: [],
-	templates: [],
 	defaults: {
-		autoSubscribe: false,
-		events: ["order.paid", "order.expired"],
-		templateId: "",
+		events: ["*"],
+		templateTranslations: Object.fromEntries(
+			supportedLocales.map((locale) => [locale, ""]),
+		) as Record<SupportedLocale, string>,
 	},
 };
 
@@ -91,7 +91,6 @@ export function TelegramNotificationsPage() {
 			});
 			setConfiguration({
 				bots: result.bots,
-				templates: result.templates,
 				defaults: result.defaults,
 			});
 			return { data: result.data, total: result.total };
@@ -128,6 +127,16 @@ export function TelegramNotificationsPage() {
 				accessorKey: "name",
 				header: m.common_name(),
 				meta: { search: true },
+				cell: ({ row }) => (
+					<div>
+						<div>{row.original.name}</div>
+						{row.original.targetUsername ? (
+							<div className="text-muted-foreground text-xs">
+								@{row.original.targetUsername}
+							</div>
+						) : null}
+					</div>
+				),
 			},
 			{ accessorKey: "botName", header: m.telegram_bot() },
 			{ accessorKey: "locale", header: m.telegram_locale() },
@@ -160,19 +169,22 @@ export function TelegramNotificationsPage() {
 				id: "actions",
 				header: m.common_actions(),
 				cell: ({ row }) => (
-					<ProButton
-						size="icon-sm"
-						variant="ghost"
-						tooltip={m.common_delete()}
-						disabled={remove.isPending}
-						onClick={() => remove.mutate({ data: { id: row.original.id } })}
-					>
-						<Trash2 />
-					</ProButton>
+					<div className="flex justify-end gap-1">
+						<EditNotification notification={row.original} onUpdated={refresh} />
+						<ProButton
+							size="icon-sm"
+							variant="ghost"
+							tooltip={m.common_delete()}
+							disabled={remove.isPending}
+							onClick={() => remove.mutate({ data: { id: row.original.id } })}
+						>
+							<Trash2 />
+						</ProButton>
+					</div>
 				),
 			},
 		],
-		[remove, toggle],
+		[refresh, remove, toggle],
 	);
 
 	return (
@@ -222,6 +234,7 @@ function DefaultSubscriptions({
 		<ModalForm
 			title={m.telegram_default_subscriptions()}
 			description={m.telegram_default_subscriptions_description()}
+			modalClassName="sm:max-w-3xl"
 			trigger={
 				<ProButton variant="outline">
 					<Settings2 />
@@ -229,46 +242,31 @@ function DefaultSubscriptions({
 				</ProButton>
 			}
 			initialValues={{
-				autoSubscribe: configuration.defaults.autoSubscribe,
 				events: configuration.defaults.events,
-				templateId:
-					configuration.defaults.templateId ||
-					configuration.templates[0]?.id ||
-					"",
+				templateTranslations: JSON.stringify(
+					configuration.defaults.templateTranslations,
+				),
 			}}
 			schema={[
 				{
-					name: "autoSubscribe",
-					label: m.telegram_auto_subscribe_on_start(),
-					valueType: "switch",
-				},
-				{
-					name: "templateId",
-					label: m.telegram_templates(),
-					valueType: "select",
-					required: true,
-					fieldProps: {
-						options: configuration.templates.map((template) => ({
-							label: template.name,
-							value: template.id,
-						})),
-					},
-				},
-				{
 					name: "events",
+					label: m.telegram_events(),
 					render: (field) => (
 						<WebhookEventMatrix
+							flatItems
 							value={eventValues(field.value)}
 							onChange={field.onChange}
 						/>
 					),
 				},
+				templateContentFormField("templateTranslations", false),
 			]}
 			onFinish={async (values) => {
 				await updateTelegramDefaultsFn({
 					data: {
-						autoSubscribe: formBooleanValue(values.autoSubscribe),
-						templateId: String(values.templateId ?? ""),
+						templateTranslations: templateTranslations(
+							values.templateTranslations,
+						),
 						events: eventValues(values.events).filter(isWebhookEventType),
 					},
 				});
@@ -291,9 +289,23 @@ function CreateNotification({
 		<ModalForm
 			title={m.common_new()}
 			description={m.telegram_add_binding_description()}
+			modalClassName="sm:max-w-3xl"
+			fieldsClassName="grid gap-4 space-y-0 sm:grid-cols-2"
 			trigger={<ProButton>{m.common_new()}</ProButton>}
 			schema={[
 				{ name: "name", label: m.common_name(), required: true },
+				{
+					name: "locale",
+					label: m.telegram_locale(),
+					valueType: "select",
+					required: true,
+					fieldProps: {
+						options: supportedLocales.map((value) => ({
+							label: localeLabels[value],
+							value,
+						})),
+					},
+				},
 				{
 					name: "botId",
 					label: m.telegram_bot(),
@@ -303,18 +315,6 @@ function CreateNotification({
 						options: configuration.bots.map((bot) => ({
 							label: bot.name,
 							value: bot.id,
-						})),
-					},
-				},
-				{
-					name: "templateId",
-					label: m.telegram_templates(),
-					valueType: "select",
-					required: true,
-					fieldProps: {
-						options: configuration.templates.map((template) => ({
-							label: template.name,
-							value: template.id,
 						})),
 					},
 				},
@@ -334,8 +334,77 @@ function CreateNotification({
 					name: "targetId",
 					label: m.telegram_target_id(),
 					required: true,
-					fieldProps: { placeholder: "-1001234567890" },
+					formItemProps: { className: "sm:col-span-2" },
 				},
+				{
+					name: "events",
+					label: m.telegram_events(),
+					required: true,
+					formItemProps: { className: "sm:col-span-2" },
+					render: (field) => (
+						<WebhookEventMatrix
+							flatItems
+							value={eventValues(field.value)}
+							onChange={field.onChange}
+						/>
+					),
+				},
+				{
+					...templateContentFormField("templateTranslations"),
+					formItemProps: { className: "sm:col-span-2" },
+				},
+			]}
+			initialValues={{
+				events: ["*"],
+				locale: "en-US",
+				targetType: "private",
+				templateTranslations: JSON.stringify(
+					configuration.defaults.templateTranslations,
+				),
+			}}
+			onFinish={async (values) => {
+				await createTelegramNotificationBindingFn({
+					data: {
+						botId: String(values.botId ?? ""),
+						templateTranslations: templateTranslations(
+							values.templateTranslations,
+						),
+						name: String(values.name ?? ""),
+						targetType: String(values.targetType ?? "private") as
+							| "private"
+							| "group"
+							| "channel",
+						targetId: String(values.targetId ?? ""),
+						locale: String(values.locale ?? "en-US") as SupportedLocale,
+						events: eventValues(values.events).filter(isWebhookEventType),
+					},
+				});
+				await onCreated();
+				toast.success(m.telegram_binding_added());
+			}}
+			onFinishFailed={showTelegramError}
+		/>
+	);
+}
+
+function EditNotification({
+	notification,
+	onUpdated,
+}: {
+	notification: TelegramNotificationBindingRecord;
+	onUpdated: () => Promise<unknown>;
+}) {
+	return (
+		<ModalForm
+			title={m.common_edit()}
+			description={m.telegram_notifications_description()}
+			modalClassName="sm:max-w-3xl"
+			trigger={
+				<ProButton size="icon-sm" variant="ghost" tooltip={m.common_edit()}>
+					<Settings2 />
+				</ProButton>
+			}
+			schema={[
 				{
 					name: "locale",
 					label: m.telegram_locale(),
@@ -350,38 +419,36 @@ function CreateNotification({
 				},
 				{
 					name: "events",
+					label: m.telegram_events(),
 					required: true,
 					render: (field) => (
 						<WebhookEventMatrix
+							flatItems
 							value={eventValues(field.value)}
 							onChange={field.onChange}
 						/>
 					),
 				},
+				templateContentFormField("templateTranslations"),
 			]}
 			initialValues={{
-				events: ["order.paid", "order.overpaid", "order.expired"],
-				locale: "en-US",
-				targetType: "private",
-				templateId: configuration.templates[0]?.id ?? "",
+				events: notification.events,
+				locale: notification.locale,
+				templateTranslations: JSON.stringify(notification.templateTranslations),
 			}}
 			onFinish={async (values) => {
-				await createTelegramNotificationBindingFn({
+				await updateTelegramNotificationBindingFn({
 					data: {
-						botId: String(values.botId ?? ""),
-						templateId: String(values.templateId ?? ""),
-						name: String(values.name ?? ""),
-						targetType: String(values.targetType ?? "private") as
-							| "private"
-							| "group"
-							| "channel",
-						targetId: String(values.targetId ?? ""),
+						id: notification.id,
+						templateTranslations: templateTranslations(
+							values.templateTranslations,
+						),
 						locale: String(values.locale ?? "en-US") as SupportedLocale,
 						events: eventValues(values.events).filter(isWebhookEventType),
 					},
 				});
-				await onCreated();
-				toast.success(m.telegram_binding_added());
+				await onUpdated();
+				toast.success(m.payment_config_saved());
 			}}
 			onFinishFailed={showTelegramError}
 		/>

@@ -14,28 +14,12 @@ const resources = [
 		server: "bots-admin",
 	},
 	{
-		id: "users",
-		page: "users",
-		route: "users",
-		component: "TelegramUsersPage",
-		listFunction: "listTelegramBindingsFn",
-		server: "users-admin",
-	},
-	{
 		id: "notifications",
 		page: "notifications",
 		route: "notifications",
 		component: "TelegramNotificationsPage",
 		listFunction: "listTelegramNotificationsFn",
 		server: "notifications-admin",
-	},
-	{
-		id: "templates",
-		page: "templates",
-		route: "templates",
-		component: "TelegramTemplatesPage",
-		listFunction: "listTelegramTemplatesFn",
-		server: "templates-admin",
 	},
 	{
 		id: "commands",
@@ -100,6 +84,18 @@ describe("Telegram admin page ownership", () => {
 		expect(
 			existsSync(resolve(root, "src/features/telegram/server/admin.ts")),
 		).toBe(false);
+	});
+
+	it("lays out notification forms without nested event cards", () => {
+		const source = read("src/features/telegram/pages/notifications.tsx");
+		expect(source).toContain(
+			'fieldsClassName="grid gap-4 space-y-0 sm:grid-cols-2"',
+		);
+		expect(source).toContain('modalClassName="sm:max-w-3xl"');
+		expect(source).toContain(
+			'templateContentFormField("templateTranslations", false)',
+		);
+		expect(source).toContain("flatItems");
 	});
 });
 

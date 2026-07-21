@@ -72,14 +72,14 @@ describe("OKPay notification flow", () => {
 			attempt: 1,
 		});
 		expect(firstCounters).toEqual({
-			d1Prepare: 16,
+			d1Prepare: 15,
 			d1Batch: 1,
 			d1Exec: 0,
 			d1Dump: 0,
 			d1StatementBind: 13,
 			d1StatementRun: 1,
 			d1StatementFirst: 4,
-			d1StatementAll: 4,
+			d1StatementAll: 3,
 			d1StatementRaw: 0,
 			kvGet: 0,
 			kvPut: 0,

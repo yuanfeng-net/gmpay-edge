@@ -32,6 +32,8 @@ interface OverlayFormProps {
 	onCancel?: () => void | Promise<void>;
 	submitter?: false | OverlayFormSubmitter;
 	className?: string;
+	fieldsClassName?: string;
+	modalClassName?: string;
 }
 
 interface ProFormProps {
@@ -224,6 +226,8 @@ export function ModalForm({
 	onCancel,
 	submitter,
 	className,
+	fieldsClassName,
+	modalClassName,
 }: OverlayFormProps) {
 	const { formRef, open, setOpen, loading, handleSubmit, handleCancel } =
 		useOverlayForm({
@@ -241,6 +245,7 @@ export function ModalForm({
 			description={description}
 			open={open}
 			onOpenChange={setOpen}
+			className={modalClassName}
 		>
 			<form
 				ref={formRef}
@@ -252,7 +257,11 @@ export function ModalForm({
 			>
 				<div className="flex-1 overflow-y-auto px-1 py-2">
 					{schema && (
-						<ProSchemaFields schema={schema} initialValues={initialValues} />
+						<ProSchemaFields
+							schema={schema}
+							initialValues={initialValues}
+							className={fieldsClassName}
+						/>
 					)}
 					{children}
 				</div>
@@ -284,6 +293,7 @@ export function DrawerForm({
 	onCancel,
 	submitter,
 	className,
+	fieldsClassName,
 	side = "right",
 }: OverlayFormProps & { side?: "top" | "right" | "bottom" | "left" }) {
 	const { formRef, open, setOpen, loading, handleSubmit, handleCancel } =
@@ -314,7 +324,11 @@ export function DrawerForm({
 			>
 				<div className="flex-1 overflow-y-auto px-4 py-2">
 					{schema && (
-						<ProSchemaFields schema={schema} initialValues={initialValues} />
+						<ProSchemaFields
+							schema={schema}
+							initialValues={initialValues}
+							className={fieldsClassName}
+						/>
 					)}
 					{children}
 				</div>

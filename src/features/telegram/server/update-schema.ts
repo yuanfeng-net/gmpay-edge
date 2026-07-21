@@ -5,9 +5,18 @@ const telegramUserSchema = z.object({
 	language_code: z.string().max(35).optional(),
 	username: z.string().max(32).optional(),
 	first_name: z.string().max(64).optional(),
+	last_name: z.string().max(64).optional(),
+});
+const telegramChatSchema = z.object({
+	id: z.number().int(),
+	type: z.enum(["private", "group", "supergroup", "channel"]),
+	title: z.string().max(255).optional(),
+	username: z.string().max(32).optional(),
+	first_name: z.string().max(64).optional(),
+	last_name: z.string().max(64).optional(),
 });
 const telegramMessageSchema = z.object({
-	chat: z.object({ id: z.number().int() }),
+	chat: telegramChatSchema,
 	from: telegramUserSchema.optional(),
 	text: z.string().max(4_096).optional(),
 });
@@ -38,13 +47,29 @@ const telegramUpdateSchema = z
 				message: telegramMessageSchema.optional(),
 			})
 			.optional(),
+		my_chat_member: z
+			.object({
+				chat: telegramChatSchema,
+				from: telegramUserSchema,
+				date: z.number().int().nonnegative(),
+				old_chat_member: z.object({
+					status: z.string().min(1).max(32),
+					is_member: z.boolean().optional(),
+				}),
+				new_chat_member: z.object({
+					status: z.string().min(1).max(32),
+					is_member: z.boolean().optional(),
+				}),
+			})
+			.optional(),
 	})
 	.refine((update) =>
 		Boolean(
 			update.message ||
 				update.inline_query ||
 				update.chosen_inline_result ||
-				update.callback_query,
+				update.callback_query ||
+				update.my_chat_member,
 		),
 	);
 

@@ -1,38 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { telegramTemplateInput } from "#/features/telegram/schema";
+import { telegramTemplateTranslationsInput } from "#/features/telegram/schema";
 
-describe("Telegram message template input", () => {
-	it("accepts one reusable template with every supported locale", () => {
-		const template = {
-			name: "Default English",
-			translations: Object.fromEntries(
-				["en-US", "ja-JP", "ko-KR", "ru-RU", "zh-TW", "zh-CN"].map((locale) => [
-					locale,
-					"Order {{externalOrderId}} is {{status}}",
-				]),
-			),
-		};
-		expect(telegramTemplateInput.parse(template)).toEqual(template);
+describe("Telegram direct message content", () => {
+	it("requires content for every supported locale", () => {
+		const translations = Object.fromEntries(
+			["en-US", "ja-JP", "ko-KR", "ru-RU", "zh-TW", "zh-CN"].map((locale) => [
+				locale,
+				"Order {{externalOrderId}} is {{status}}",
+			]),
+		);
+		expect(telegramTemplateTranslationsInput.parse(translations)).toEqual(
+			translations,
+		);
 		expect(
-			telegramTemplateInput.safeParse({
-				...template,
-				translations: { ...template.translations, "zh-CN": "" },
+			telegramTemplateTranslationsInput.safeParse({
+				...translations,
+				"zh-CN": "",
 			}).success,
 		).toBe(false);
 	});
 
-	it("rejects unsupported template variables", () => {
+	it("rejects unsupported variables", () => {
 		expect(
-			telegramTemplateInput.safeParse({
-				name: "Unsafe",
-				translations: {
-					"en-US": "Safe",
-					"ja-JP": "Safe",
-					"ko-KR": "Safe",
-					"ru-RU": "Safe",
-					"zh-TW": "Safe",
-					"zh-CN": "{{process.env.SECRET}}",
-				},
+			telegramTemplateTranslationsInput.safeParse({
+				"en-US": "Safe",
+				"ja-JP": "Safe",
+				"ko-KR": "Safe",
+				"ru-RU": "Safe",
+				"zh-TW": "Safe",
+				"zh-CN": "{{process.env.SECRET}}",
 			}).success,
 		).toBe(false);
 	});

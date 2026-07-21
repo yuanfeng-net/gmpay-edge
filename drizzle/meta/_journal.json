@@ -22,6 +22,13 @@
       "when": 1784634241832,
       "tag": "0002_immediate_release_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784640000000,
+      "tag": "0003_telegram_unified_subscriptions",
+      "breakpoints": true
     }
   ]
 }

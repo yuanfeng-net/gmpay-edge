@@ -46,8 +46,8 @@ the protected `/admin` application.
   including a protected built-in `root` role.
 - Run payment scanning, expiry, cleanup, connection health, and rate sync through
   Cloudflare Queues and Cron Triggers.
-- Operate Telegram Bots through grammY with Inline orders, public commands,
-  localized templates, user bindings, and notification subscriptions.
+- Operate Telegram Bots through grammY with Inline orders, public commands, and
+  unified private, group, and channel notification subscriptions.
 - Provide a responsive React 19 admin console, checkout, public status pages,
   OpenAPI reference, and six UI locales.
 
@@ -96,39 +96,6 @@ is authoritative; KV provides validated versioned caches and R2 stores private
 artifacts. Cron and Queues move payment scans and Webhook retries outside
 synchronous requests. Payment adapters remain read-only.
 
-## Quick start
-
-### Requirements
-
-- [Bun](https://bun.sh/) 1.3 or later
-- A local environment supported by [Wrangler](https://developers.cloudflare.com/workers/wrangler/)
-
-Install dependencies and start the development server:
-
-```bash
-bun install
-bun run dev
-```
-
-`bun run dev` applies pending migrations to the local `gmpay-edge` D1 database
-and starts the application at <http://localhost:3000>. Local development uses
-Wrangler-managed local bindings; it does not apply migrations to remote D1.
-
-Open <http://localhost:3000/install> on the first run. Installation creates the
-first user, the protected `root` role, runtime secrets, payment defaults, four
-public Telegram commands, five public templates with six locale translations,
-and Telegram defaults. The current Origin is stored as the application URL and
-an Allowed Host, then the new root user is signed in automatically. Installation
-does not create a Telegram Bot or call Telegram.
-
-After installation:
-
-1. Review the generated system settings in `/admin`.
-2. Confirm the detected HTTPS origin and back up the runtime configuration.
-3. Configure and test the required public connections or read-only credentials.
-4. Create receiving methods for the assets that should appear at checkout.
-5. Create a scoped merchant API credential and complete a signed test order.
-
 ## Deploy to Cloudflare Workers
 
 GMPay Edge deploys as one Cloudflare Worker with D1, KV, private R2, two Queues,
@@ -172,6 +139,39 @@ The deployment declares these bindings:
 | `FILES` | R2 | Private payment-review evidence and generated exports |
 | `PAYMENT_QUEUE` | Queues | Asynchronous payment scanning |
 | `WEBHOOK_QUEUE` | Queues | Asynchronous merchant Webhook delivery |
+
+## Quick start
+
+### Requirements
+
+- [Bun](https://bun.sh/) 1.3 or later
+- A local environment supported by [Wrangler](https://developers.cloudflare.com/workers/wrangler/)
+
+Install dependencies and start the development server:
+
+```bash
+bun install
+bun run dev
+```
+
+`bun run dev` applies pending migrations to the local `gmpay-edge` D1 database
+and starts the application at <http://localhost:3000>. Local development uses
+Wrangler-managed local bindings; it does not apply migrations to remote D1.
+
+Open <http://localhost:3000/install> on the first run. Installation creates the
+first user, the protected `root` role, runtime secrets, payment defaults, four
+public Telegram commands with six-locale message content, and Telegram defaults.
+The current Origin is stored as the application URL and
+an Allowed Host, then the new root user is signed in automatically. Installation
+does not create a Telegram Bot or call Telegram.
+
+After installation:
+
+1. Review the generated system settings in `/admin`.
+2. Confirm the detected HTTPS origin and back up the runtime configuration.
+3. Configure and test the required public connections or read-only credentials.
+4. Create receiving methods for the assets that should appear at checkout.
+5. Create a scoped merchant API credential and complete a signed test order.
 
 ## Merchant integration
 
@@ -271,7 +271,7 @@ deployer-owned infrastructure during production acceptance.
 | Merchant requests, signatures, errors, and EPay | [Merchant API](docs/en-US/MERCHANT_API.md) |
 | Provider configuration and receiving methods | [Payment methods](docs/en-US/PAYMENT_METHODS.md) |
 | Inbound endpoints and merchant delivery | [Webhooks](docs/en-US/WEBHOOKS.md) |
-| Bots, Inline orders, templates, and notifications | [Telegram](docs/en-US/TELEGRAM.md) |
+| Bots, Inline orders, commands, and subscriptions | [Telegram](docs/en-US/TELEGRAM.md) |
 | Authentication, secrets, uploads, and response policy | [Security notes](docs/en-US/SECURITY.md) |
 | Implemented capabilities and required evidence | [Capability matrix](docs/en-US/CAPABILITY_MATRIX.md) |
 | Machine-readable API contract | [OpenAPI YAML](public/openapi.yaml) |

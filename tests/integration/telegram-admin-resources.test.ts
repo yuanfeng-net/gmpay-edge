@@ -21,10 +21,7 @@ describe("Telegram admin resources", () => {
 				"INSERT INTO telegram_bots (id, name, token_encrypted, webhook_secret_encrypted, enabled, created_at, updated_at) VALUES ('bot', 'Bot', 'token', 'secret', 0, 1, 1)",
 			),
 			db.prepare(
-				"INSERT INTO telegram_message_templates (id, name, translations, enabled, created_at, updated_at) VALUES ('template', 'Template', '{}', 1, 1, 1)",
-			),
-			db.prepare(
-				"INSERT INTO telegram_notification_bindings (id, bot_id, template_id, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('target', 'bot', 'template', 'Target', 'private', '100', 'en-US', '[\"order.paid\"]', 1, 1, 1)",
+				"INSERT INTO telegram_notification_bindings (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('target', 'bot', '{}', 'Target', 'private', '100', 'en-US', '[\"order.paid\"]', 1, 1, 1)",
 			),
 		]);
 	});

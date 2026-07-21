@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { systemPermission } from "#/features/access/system-rbac";
+import { telegramTemplateTranslationsInput } from "#/features/telegram/schema";
 import {
 	telegramAdminContext,
 	telegramAuditStatement,
@@ -10,10 +11,8 @@ import {
 	requireTelegramResourceAvailable,
 } from "#/features/telegram/server/resource-errors";
 import { syncAllTelegramCommandCatalogs } from "#/features/telegram/server/sync-commands";
-import {
-	mapTelegramTemplates,
-	type TelegramTemplateRow,
-} from "#/features/telegram/server/template-catalog";
+import { parseTelegramTemplateTranslations } from "#/features/telegram/template-translations";
+import type { SupportedLocale } from "#/lib/locales";
 
 export type TelegramCommandRecord = {
 	id: string;
@@ -24,8 +23,7 @@ export type TelegramCommandRecord = {
 	descriptionRuRu: string;
 	descriptionZhTw: string;
 	descriptionZhCn: string;
-	handlerType: "start" | "help" | "new" | "status" | "template";
-	templateId: string | null;
+	templateTranslations: Record<SupportedLocale, string>;
 	scope: "default" | "private" | "group" | "admin";
 	sortOrder: number;
 	enabled: boolean;
@@ -41,8 +39,7 @@ type TelegramCommandRow = {
 	description_ru_ru: string;
 	description_zh_tw: string;
 	description_zh_cn: string;
-	handler_type: "start" | "help" | "new" | "status" | "template";
-	template_id: string | null;
+	template_translations: unknown;
 	scope: "default" | "private" | "group" | "admin";
 	sort_order: number;
 	enabled: number;
@@ -69,60 +66,46 @@ export const listTelegramCommandsFn = createServerFn({ method: "GET" })
 		const parameters = search
 			? [data.beforeCreatedAt, search]
 			: [data.beforeCreatedAt];
-		const [countResult, commandsResult, templatesResult, botsResult] =
-			await db.batch([
-				db
-					.prepare(
-						`SELECT COUNT(*) AS total FROM telegram_bot_commands ${where}`,
-					)
-					.bind(...parameters),
-				db
-					.prepare(`SELECT id, command, description_en_us, description_ja_jp,
+		const [countResult, commandsResult, botsResult] = await db.batch([
+			db
+				.prepare(`SELECT COUNT(*) AS total FROM telegram_bot_commands ${where}`)
+				.bind(...parameters),
+			db
+				.prepare(`SELECT id, command, description_en_us, description_ja_jp,
 						description_ko_kr, description_ru_ru, description_zh_tw,
-						description_zh_cn, handler_type, template_id, scope, sort_order,
+						description_zh_cn, template_translations, scope, sort_order,
 						enabled, created_at FROM telegram_bot_commands ${where}
 						ORDER BY scope, sort_order, command LIMIT ? OFFSET ?`)
-					.bind(...parameters, data.pageSize, data.pageIndex * data.pageSize),
-				db.prepare(`SELECT id, name, translations, enabled, created_at
-					FROM telegram_message_templates ORDER BY name`),
-				db.prepare("SELECT COUNT(*) AS total FROM telegram_bots"),
-			]);
+				.bind(...parameters, data.pageSize, data.pageIndex * data.pageSize),
+			db.prepare("SELECT COUNT(*) AS total FROM telegram_bots"),
+		]);
 		return {
 			data: (commandsResult as D1Result<TelegramCommandRow>).results.map(
 				commandRecord,
 			),
 			total:
 				(countResult?.results[0] as { total: number } | undefined)?.total ?? 0,
-			templates: mapTelegramTemplates(
-				(templatesResult as D1Result<TelegramTemplateRow>).results,
-			),
 			botCount:
 				(botsResult?.results[0] as { total: number } | undefined)?.total ?? 0,
 		};
 	});
 
-const commandInput = z
-	.object({
-		command: z
-			.string()
-			.trim()
-			.toLowerCase()
-			.regex(/^[a-z0-9_]{1,32}$/),
-		descriptionEnUs: z.string().trim().min(1).max(256),
-		descriptionJaJp: z.string().trim().min(1).max(256),
-		descriptionKoKr: z.string().trim().min(1).max(256),
-		descriptionRuRu: z.string().trim().min(1).max(256),
-		descriptionZhTw: z.string().trim().min(1).max(256),
-		descriptionZhCn: z.string().trim().min(1).max(256),
-		handlerType: z.enum(["start", "help", "new", "status", "template"]),
-		templateId: z.string().trim().min(1).nullable().optional(),
-		scope: z.enum(["default", "private", "group", "admin"]),
-		sortOrder: z.number().int().min(0).max(10_000),
-	})
-	.refine((value) => value.handlerType !== "template" || value.templateId, {
-		message: "A response template is required for a template command",
-		path: ["templateId"],
-	});
+const commandInput = z.object({
+	command: z
+		.string()
+		.trim()
+		.toLowerCase()
+		.regex(/^[a-z0-9_]{1,32}$/),
+	descriptionEnUs: z.string().trim().min(1).max(256),
+	descriptionJaJp: z.string().trim().min(1).max(256),
+	descriptionKoKr: z.string().trim().min(1).max(256),
+	descriptionRuRu: z.string().trim().min(1).max(256),
+	descriptionZhTw: z.string().trim().min(1).max(256),
+	descriptionZhCn: z.string().trim().min(1).max(256),
+	templateTranslations: telegramTemplateTranslationsInput,
+	scope: z.enum(["default", "private", "group", "admin"]),
+	sortOrder: z.number().int().min(0).max(10_000),
+});
 
 export const createTelegramCommandFn = createServerFn({ method: "POST" })
 	.validator((input: z.input<typeof commandInput>) => commandInput.parse(input))
@@ -131,7 +114,6 @@ export const createTelegramCommandFn = createServerFn({ method: "POST" })
 			systemPermission("telegram", "create"),
 		);
 		await requireCommandAvailable(context.db, data.command, data.scope);
-		if (data.templateId) await requireTemplate(context.db, data.templateId);
 		const id = crypto.randomUUID();
 		const now = Date.now();
 		await context.db.batch([
@@ -139,9 +121,9 @@ export const createTelegramCommandFn = createServerFn({ method: "POST" })
 				.prepare(`INSERT INTO telegram_bot_commands
 					(id, command, description_en_us, description_ja_jp,
 					description_ko_kr, description_ru_ru, description_zh_tw,
-					description_zh_cn, handler_type, template_id, scope, sort_order,
+					description_zh_cn, handler_type, template_translations, scope, sort_order,
 					enabled, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'template', ?, ?, ?, 1, ?, ?)`)
 				.bind(
 					id,
 					data.command,
@@ -151,8 +133,7 @@ export const createTelegramCommandFn = createServerFn({ method: "POST" })
 					data.descriptionRuRu,
 					data.descriptionZhTw,
 					data.descriptionZhCn,
-					data.handlerType,
-					data.templateId ?? null,
+					JSON.stringify(data.templateTranslations),
 					data.scope,
 					data.sortOrder,
 					now,
@@ -163,7 +144,7 @@ export const createTelegramCommandFn = createServerFn({ method: "POST" })
 				"telegram_command.created",
 				"telegram_bot_command",
 				id,
-				data,
+				{ ...data, templateTranslations: "[REDACTED]" },
 				now,
 			),
 		]);
@@ -193,14 +174,13 @@ export const updateTelegramCommandFn = createServerFn({ method: "POST" })
 			data.scope,
 			data.id,
 		);
-		if (data.templateId) await requireTemplate(context.db, data.templateId);
 		const now = Date.now();
 		await context.db.batch([
 			context.db
 				.prepare(`UPDATE telegram_bot_commands SET
 					command = ?, description_en_us = ?, description_ja_jp = ?,
 					description_ko_kr = ?, description_ru_ru = ?, description_zh_tw = ?,
-					description_zh_cn = ?, handler_type = ?, template_id = ?, scope = ?,
+					description_zh_cn = ?, template_translations = ?, scope = ?,
 					sort_order = ?, updated_at = ? WHERE id = ?`)
 				.bind(
 					data.command,
@@ -210,8 +190,7 @@ export const updateTelegramCommandFn = createServerFn({ method: "POST" })
 					data.descriptionRuRu,
 					data.descriptionZhTw,
 					data.descriptionZhCn,
-					data.handlerType,
-					data.templateId ?? null,
+					JSON.stringify(data.templateTranslations),
 					data.scope,
 					data.sortOrder,
 					now,
@@ -222,7 +201,7 @@ export const updateTelegramCommandFn = createServerFn({ method: "POST" })
 				"telegram_command.updated",
 				"telegram_bot_command",
 				data.id,
-				data,
+				{ ...data, templateTranslations: "[REDACTED]" },
 				now,
 			),
 		]);
@@ -316,8 +295,9 @@ function commandRecord(row: TelegramCommandRow): TelegramCommandRecord {
 		descriptionRuRu: row.description_ru_ru,
 		descriptionZhTw: row.description_zh_tw,
 		descriptionZhCn: row.description_zh_cn,
-		handlerType: row.handler_type,
-		templateId: row.template_id,
+		templateTranslations: parseTelegramTemplateTranslations(
+			row.template_translations,
+		),
 		scope: row.scope,
 		sortOrder: row.sort_order,
 		enabled: Boolean(row.enabled),
@@ -348,12 +328,4 @@ async function requireCommandAvailable(
 		.bind(...(excludeId ? [command, scope, excludeId] : [command, scope]))
 		.first<{ id: string }>();
 	requireTelegramResourceAvailable(existing, "command");
-}
-
-async function requireTemplate(db: D1Database, id: string) {
-	const template = await db
-		.prepare("SELECT id FROM telegram_message_templates WHERE id = ? LIMIT 1")
-		.bind(id)
-		.first<{ id: string }>();
-	return requireTelegramResource(template, "template");
 }

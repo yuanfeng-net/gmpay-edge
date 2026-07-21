@@ -90,9 +90,8 @@ describe("system installation", { timeout: 30_000 }, () => {
 				 (SELECT COUNT(*) FROM exchange_rates) AS exchange_rates,
 				 (SELECT COUNT(*) FROM telegram_bots) AS telegram_bots,
 				 (SELECT COUNT(*) FROM telegram_bot_commands) AS telegram_commands,
-				 (SELECT COUNT(*) FROM telegram_message_templates) AS telegram_templates,
-				 (SELECT COUNT(*) FROM telegram_message_templates, json_each(translations)) AS telegram_translations,
-				 (SELECT COUNT(*) FROM system_settings WHERE key IN ('telegram.auto_subscribe_on_start','telegram.default_events','telegram.default_template_id')) AS telegram_settings`)
+				 (SELECT COUNT(*) FROM telegram_bot_commands, json_each(template_translations)) AS telegram_command_translations,
+				 (SELECT COUNT(*) FROM system_settings WHERE key IN ('telegram.default_events','telegram.default_template_translations')) AS telegram_settings`)
 			.first<Record<string, number>>();
 		expect(state).toEqual({
 			users: 1,
@@ -107,16 +106,9 @@ describe("system installation", { timeout: 30_000 }, () => {
 			exchange_rates: initialExchangeRates.length,
 			telegram_bots: 0,
 			telegram_commands: 4,
-			telegram_templates: 5,
-			telegram_translations: 30,
-			telegram_settings: 3,
+			telegram_command_translations: 24,
+			telegram_settings: 2,
 		});
-		const telegramAutoSubscribe = await database
-			.prepare(
-				"SELECT value FROM system_settings WHERE key = 'telegram.auto_subscribe_on_start'",
-			)
-			.first<{ value: string }>();
-		expect(JSON.parse(telegramAutoSubscribe?.value ?? "null")).toBe(false);
 		const methods = await queryPublicPaymentMethods(database);
 		expect(methods.map((item) => item.code)).toEqual(
 			expect.arrayContaining([

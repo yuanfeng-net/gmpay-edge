@@ -120,7 +120,7 @@ async function seed(db: D1Database) {
 			.bind(token, now, now),
 		db
 			.prepare(
-				"INSERT INTO telegram_message_templates (id, name, translations, enabled, created_at, updated_at) VALUES ('template-paid', 'Paid', ?, 1, ?, ?)",
+				"INSERT INTO telegram_notification_bindings (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('target-cn', 'bot', ?, 'CN operations', 'private', '1001', 'zh-CN', '[\"order.paid\"]', 1, ?, ?)",
 			)
 			.bind(
 				JSON.stringify({
@@ -132,7 +132,7 @@ async function seed(db: D1Database) {
 			),
 		db
 			.prepare(
-				"INSERT INTO telegram_message_templates (id, name, translations, enabled, created_at, updated_at) VALUES ('template-default', 'Default', ?, 1, ?, ?)",
+				"INSERT INTO telegram_notification_bindings (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('target-tw', 'bot', ?, 'TW operations', 'group', '1002', 'zh-TW', '[\"order.paid\"]', 1, ?, ?)",
 			)
 			.bind(
 				JSON.stringify({
@@ -141,15 +141,5 @@ async function seed(db: D1Database) {
 				now,
 				now,
 			),
-		db
-			.prepare(
-				"INSERT INTO telegram_notification_bindings (id, bot_id, template_id, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('target-cn', 'bot', 'template-paid', 'CN operations', 'private', '1001', 'zh-CN', '[\"order.paid\"]', 1, ?, ?)",
-			)
-			.bind(now, now),
-		db
-			.prepare(
-				"INSERT INTO telegram_notification_bindings (id, bot_id, template_id, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('target-tw', 'bot', 'template-default', 'TW operations', 'group', '1002', 'zh-TW', '[\"order.paid\"]', 1, ?, ?)",
-			)
-			.bind(now, now),
 	]);
 }

@@ -19,9 +19,7 @@ const adminServerModules = [
 	"src/features/payments/server/admin.ts",
 	"src/features/settings/server/admin.ts",
 	"src/features/telegram/server/bots-admin.ts",
-	"src/features/telegram/server/users-admin.ts",
 	"src/features/telegram/server/notifications-admin.ts",
-	"src/features/telegram/server/templates-admin.ts",
 	"src/features/telegram/server/commands-admin.ts",
 	"src/features/users/server/admin.ts",
 	"src/features/webhooks/server/admin.ts",
@@ -159,9 +157,7 @@ const permissionContracts = [
 		"telegram:read",
 		[
 			"listTelegramBotsFn",
-			"listTelegramBindingsFn",
 			"listTelegramNotificationsFn",
-			"listTelegramTemplatesFn",
 			"listTelegramCommandsFn",
 		],
 	],
@@ -170,7 +166,6 @@ const permissionContracts = [
 		[
 			"createTelegramBotFn",
 			"createTelegramNotificationBindingFn",
-			"createTelegramTemplateFn",
 			"createTelegramCommandFn",
 		],
 	],
@@ -179,10 +174,9 @@ const permissionContracts = [
 		[
 			"updateTelegramBotFn",
 			"updateTelegramDefaultsFn",
+			"updateTelegramNotificationBindingFn",
 			"setTelegramNotificationEnabledFn",
-			"setTelegramTemplateEnabledFn",
 			"setTelegramCommandEnabledFn",
-			"updateTelegramTemplateFn",
 			"updateTelegramCommandFn",
 			"setTelegramBotEnabledFn",
 			"testTelegramBotFn",
@@ -192,9 +186,7 @@ const permissionContracts = [
 	[
 		"telegram:delete",
 		[
-			"deleteTelegramBindingFn",
 			"deleteTelegramNotificationBindingFn",
-			"deleteTelegramTemplateFn",
 			"deleteTelegramCommandFn",
 			"deleteTelegramBotFn",
 		],

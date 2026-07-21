@@ -2,7 +2,7 @@ import { DomainError } from "#/lib/domain-error";
 
 export function requireTelegramResource<T>(
 	resource: T | null | undefined,
-	kind: "bot" | "template" | "command" | "notification",
+	kind: "bot" | "command" | "notification",
 ): T {
 	if (resource) return resource;
 	if (kind === "bot")
@@ -10,12 +10,6 @@ export function requireTelegramResource<T>(
 			"telegram_bot_not_found",
 			404,
 			"Telegram bot not found",
-		);
-	if (kind === "template")
-		throw new DomainError(
-			"telegram_template_not_found",
-			404,
-			"Telegram message template not found",
 		);
 	if (kind === "notification")
 		throw new DomainError(

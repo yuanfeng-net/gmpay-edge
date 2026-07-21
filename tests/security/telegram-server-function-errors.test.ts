@@ -14,11 +14,6 @@ describe("Telegram Server Function error presentation", () => {
 		["telegram_config_unavailable", m.telegram_error_config_unavailable()],
 		["telegram_bot_not_found", m.telegram_error_bot_not_found()],
 		["telegram_bot_enabled", m.telegram_error_disable_bot_before_delete()],
-		[
-			"telegram_bot_has_bindings",
-			m.telegram_error_remove_bindings_before_delete(),
-		],
-		["telegram_template_not_found", m.telegram_error_template_not_found()],
 		["telegram_command_not_found", m.telegram_error_command_not_found()],
 		[
 			"telegram_notification_not_found",
@@ -34,7 +29,6 @@ describe("Telegram Server Function error presentation", () => {
 
 	it.each([
 		["bot", "telegram_bot_not_found"],
-		["template", "telegram_template_not_found"],
 		["command", "telegram_command_not_found"],
 		["notification", "telegram_notification_not_found"],
 	] as const)("uses a stable code for a missing %s", (kind, code) => {

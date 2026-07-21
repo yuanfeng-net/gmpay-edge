@@ -81,7 +81,7 @@ describe("Telegram inline integration", () => {
 			update: {
 				update_id: 2,
 				message: {
-					chat: { id: 999 },
+					chat: { id: 999, type: "private" },
 					from: { id: 999 },
 					text: "/status merchant-1001",
 				},
@@ -147,7 +147,7 @@ describe("Telegram inline integration", () => {
 						? { bind: () => ({ first: async () => null }) }
 						: sql.includes("FROM telegram_bot_commands")
 							? { bind: () => ({ first: async () => null }) }
-							: sql.includes("FROM telegram_bindings")
+							: sql.includes("FROM telegram_notification_bindings")
 								? { bind: () => ({ all: async () => ({ results: [] }) }) }
 								: { bind: () => ({ first: async () => null }) },
 			),
@@ -181,7 +181,7 @@ describe("Telegram inline integration", () => {
 		vi.stubGlobal("fetch", fetchMock);
 		const db = {
 			prepare: vi.fn((sql: string) =>
-				sql.includes("FROM telegram_bindings")
+				sql.includes("FROM telegram_notification_bindings")
 					? { bind: () => ({ all: async () => ({ results: [] }) }) }
 					: { all: async () => ({ results: [] }) },
 			),
@@ -288,7 +288,7 @@ function database(rows: unknown[]) {
 							first: async () => ({
 								command: "status",
 								handler_type: "status",
-								template_id: null,
+								template_translations: {},
 							}),
 						}
 					: { all: async () => ({ results: rows }) };

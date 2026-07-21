@@ -10,10 +10,6 @@ export function telegramOperationErrorMessage(error: unknown) {
 			return m.telegram_error_bot_not_found();
 		case "telegram_bot_enabled":
 			return m.telegram_error_disable_bot_before_delete();
-		case "telegram_bot_has_bindings":
-			return m.telegram_error_remove_bindings_before_delete();
-		case "telegram_template_not_found":
-			return m.telegram_error_template_not_found();
 		case "telegram_command_not_found":
 			return m.telegram_error_command_not_found();
 		case "telegram_notification_not_found":

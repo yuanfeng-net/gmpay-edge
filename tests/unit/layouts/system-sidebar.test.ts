@@ -129,9 +129,7 @@ describe("admin navigation", () => {
 		]);
 		expect(urls([systemPermission("telegram", "read")])).toEqual([
 			"/admin/telegram",
-			"/admin/telegram/users",
 			"/admin/telegram/notifications",
-			"/admin/telegram/templates",
 			"/admin/telegram/commands",
 		]);
 	});
@@ -210,7 +208,6 @@ describe("admin navigation", () => {
 			["operations/pages/jobs.tsx", "m.nav_scheduled_tasks()"],
 			["operations/pages/audit-logs.tsx", "m.nav_audit_logs()"],
 			["telegram/pages/bots.tsx", "m.telegram_bot()"],
-			["telegram/pages/users.tsx", "m.nav_telegram_bindings()"],
 			["telegram/pages/notifications.tsx", "m.nav_telegram_subscriptions()"],
 			["telegram/pages/commands.tsx", "m.nav_telegram_commands()"],
 			[

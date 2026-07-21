@@ -281,7 +281,13 @@ async function configureTelegramWebhook(
 	if (url) {
 		await api.setWebhook(url, {
 			secret_token: secretToken,
-			allowed_updates: ["message", "inline_query", "callback_query"],
+			allowed_updates: [
+				"message",
+				"inline_query",
+				"chosen_inline_result",
+				"callback_query",
+				"my_chat_member",
+			],
 		});
 		return;
 	}

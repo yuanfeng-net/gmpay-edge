@@ -21,15 +21,10 @@ describe("integration resource deletion", () => {
 					"INSERT INTO telegram_bots (id, name, token_encrypted, webhook_secret_encrypted, enabled, created_at, updated_at) VALUES ('bot', 'Bot', 'token', 'secret', 1, ?, ?)",
 				)
 				.bind(now, now),
-			db
-				.prepare(
-					"INSERT INTO telegram_bindings (id, bot_id, telegram_user_id, created_at, updated_at) VALUES ('binding', 'bot', '1', ?, ?)",
-				)
-				.bind(now, now),
 		]);
 	});
 	afterAll(async () => miniflare.dispose());
-	it("requires a disabled unbound Telegram bot", async () => {
+	it("requires a disabled Telegram bot and cascades its targets", async () => {
 		await expect(deleteTelegramBot(db, "missing")).rejects.toMatchObject({
 			code: "telegram_bot_not_found",
 			status: 404,
@@ -40,13 +35,6 @@ describe("integration resource deletion", () => {
 		});
 		await db
 			.prepare("UPDATE telegram_bots SET enabled = 0 WHERE id = 'bot'")
-			.run();
-		await expect(deleteTelegramBot(db, "bot")).rejects.toMatchObject({
-			code: "telegram_bot_has_bindings",
-			status: 409,
-		});
-		await db
-			.prepare("DELETE FROM telegram_bindings WHERE id = 'binding'")
 			.run();
 		await expect(deleteTelegramBot(db, "bot")).resolves.toEqual({ id: "bot" });
 	});

@@ -9,7 +9,7 @@ import {
 	vi,
 } from "vitest";
 import {
-	defaultTelegramTemplates,
+	defaultTelegramNotificationTranslations,
 	reconcileTelegramDefaults,
 } from "#/features/telegram/defaults";
 import { deleteTelegramBot } from "#/features/telegram/server/delete";
@@ -54,9 +54,11 @@ describe("Telegram bot updates", () => {
 					),
 					await encryptSecret("telegram-webhook-secret", configSecret),
 				),
-			db.prepare(
-				"INSERT INTO telegram_bindings (id, bot_id, user_id, telegram_user_id, created_at, updated_at) VALUES ('binding', 'bot', 'actor', '100', 1, 1)",
-			),
+			db
+				.prepare(
+					"INSERT INTO telegram_notification_bindings (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES ('11111111-1111-4111-8111-111111111111', 'bot', ?, 'User', 'private', '100', 'en-US', '[]', 1, 1, 1)",
+				)
+				.bind(JSON.stringify(defaultTelegramNotificationTranslations)),
 		]);
 	});
 
@@ -64,22 +66,18 @@ describe("Telegram bot updates", () => {
 	afterAll(async () => miniflare.dispose());
 
 	it("reconciles missing public defaults without overwriting edits", async () => {
-		const notificationDefault = defaultTelegramTemplates.find(
-			(template) => template.id === "telegram-template-notifications",
-		);
-		expect(notificationDefault).toBeTruthy();
 		await db
 			.prepare(
-				`UPDATE telegram_message_templates
-				 SET translations = json_set(translations, '$."en-US"', 'Operator template')
-				 WHERE id = 'telegram-template-notifications'`,
+				`UPDATE system_settings
+				 SET value = json_set(value, '$."en-US"', 'Operator template')
+				 WHERE key = 'telegram.default_template_translations'`,
 			)
 			.run();
 		await db
 			.prepare(
-				`UPDATE telegram_message_templates
-				 SET translations = json_remove(translations, '$."ja-JP"')
-				 WHERE id = 'telegram-template-notifications'`,
+				`UPDATE system_settings
+				 SET value = json_remove(value, '$."ja-JP"')
+				 WHERE key = 'telegram.default_template_translations'`,
 			)
 			.run();
 		await db
@@ -93,15 +91,13 @@ describe("Telegram bot updates", () => {
 			.prepare(
 				`SELECT
 				 (SELECT COUNT(*) FROM telegram_bot_commands) AS commands,
-				 (SELECT COUNT(*) FROM telegram_message_templates) AS templates,
-				 (SELECT COUNT(*) FROM telegram_message_templates, json_each(translations)) AS translations,
-				 (SELECT json_extract(translations, '$."en-US"') FROM telegram_message_templates WHERE id='telegram-template-notifications') AS content,
-				 (SELECT json_extract(translations, '$."ja-JP"') FROM telegram_message_templates WHERE id='telegram-template-notifications') AS japanese_content,
+				 (SELECT COUNT(*) FROM telegram_bot_commands, json_each(template_translations)) AS translations,
+				 (SELECT json_extract(value, '$."en-US"') FROM system_settings WHERE key='telegram.default_template_translations') AS content,
+				 (SELECT json_extract(value, '$."ja-JP"') FROM system_settings WHERE key='telegram.default_template_translations') AS japanese_content,
 				 (SELECT description_en_us FROM telegram_bot_commands WHERE command='start' AND scope='default') AS description`,
 			)
 			.first<{
 				commands: number;
-				templates: number;
 				translations: number;
 				content: string;
 				japanese_content: string;
@@ -109,10 +105,9 @@ describe("Telegram bot updates", () => {
 			}>();
 		expect(state).toEqual({
 			commands: 4,
-			templates: 5,
-			translations: 30,
+			translations: 24,
 			content: "Operator template",
-			japanese_content: notificationDefault?.translations["ja-JP"],
+			japanese_content: defaultTelegramNotificationTranslations["ja-JP"],
 			description: "Operator command",
 		});
 	});
@@ -179,7 +174,9 @@ describe("Telegram bot updates", () => {
 		).resolves.toBe(token);
 		expect(bot).toMatchObject({ name: "Replacement", username: "new_bot" });
 		const binding = await db
-			.prepare("SELECT bot_id FROM telegram_bindings WHERE id = 'binding'")
+			.prepare(
+				"SELECT bot_id FROM telegram_notification_bindings WHERE target_id = '100'",
+			)
 			.first<{ bot_id: string }>();
 		expect(binding?.bot_id).toBe("bot");
 
@@ -280,20 +277,17 @@ describe("Telegram bot updates", () => {
 			.prepare(
 				`SELECT
 				 (SELECT COUNT(*) FROM telegram_bot_commands) AS commands,
-				 (SELECT COUNT(*) FROM telegram_message_templates) AS templates,
-				 (SELECT COUNT(*) FROM telegram_message_templates, json_each(translations)) AS translations,
-				 (SELECT COUNT(DISTINCT key) FROM telegram_message_templates, json_each(translations)) AS locales`,
+				 (SELECT COUNT(*) FROM telegram_bot_commands, json_each(template_translations)) AS translations,
+				 (SELECT COUNT(DISTINCT key) FROM telegram_bot_commands, json_each(template_translations)) AS locales`,
 			)
 			.first<{
 				commands: number;
-				templates: number;
 				translations: number;
 				locales: number;
 			}>();
 		expect(defaults).toEqual({
 			commands: 4,
-			templates: 5,
-			translations: 30,
+			translations: 24,
 			locales: 6,
 		});
 	});
@@ -428,16 +422,16 @@ describe("Telegram bot updates", () => {
 		).rejects.toMatchObject({ code: "telegram_bot_not_found", status: 404 });
 	});
 
-	it("keeps the public catalogs when a bot is deleted", async () => {
+	it("keeps instance command and default notification content when a bot is deleted", async () => {
 		await expect(deleteTelegramBot(db, "bot-with-defaults")).resolves.toEqual({
 			id: "bot-with-defaults",
 		});
 		const catalogs = await db
 			.prepare(
-				"SELECT (SELECT COUNT(*) FROM telegram_bot_commands) AS commands, (SELECT COUNT(*) FROM telegram_message_templates) AS templates",
+				"SELECT (SELECT COUNT(*) FROM telegram_bot_commands) AS commands, (SELECT COUNT(*) FROM system_settings WHERE key = 'telegram.default_template_translations') AS defaults",
 			)
-			.first<{ commands: number; templates: number }>();
-		expect(catalogs).toEqual({ commands: 4, templates: 5 });
+			.first<{ commands: number; defaults: number }>();
+		expect(catalogs).toEqual({ commands: 4, defaults: 1 });
 	});
 
 	it("removes the external webhook if the atomic D1 create fails", async () => {

@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { systemPermission } from "#/features/access/system-rbac";
+import { defaultTelegramNotificationTranslations } from "#/features/telegram/defaults";
+import { telegramTemplateTranslationsInput } from "#/features/telegram/schema";
 import {
 	telegramAdminContext,
 	telegramAuditStatement,
@@ -10,10 +12,7 @@ import {
 	requireTelegramResource,
 	requireTelegramResourceAvailable,
 } from "#/features/telegram/server/resource-errors";
-import {
-	mapTelegramTemplates,
-	type TelegramTemplateRow,
-} from "#/features/telegram/server/template-catalog";
+import { parseTelegramTemplateTranslations } from "#/features/telegram/template-translations";
 import { webhookEventTypes } from "#/features/webhooks/types";
 import { type SupportedLocale, supportedLocales } from "#/lib/locales";
 
@@ -21,13 +20,13 @@ export type TelegramNotificationBindingRecord = {
 	id: string;
 	botId: string;
 	botName: string;
-	templateId: string | null;
-	templateName: string | null;
 	name: string;
+	targetUsername: string | null;
 	targetType: "private" | "group" | "channel";
 	targetId: string;
 	locale: SupportedLocale;
 	events: string[];
+	templateTranslations: Record<SupportedLocale, string>;
 	enabled: boolean;
 	createdAt: string;
 };
@@ -36,13 +35,13 @@ type TelegramTargetRow = {
 	id: string;
 	bot_id: string;
 	bot_name: string;
-	template_id: string | null;
-	template_name: string | null;
 	name: string;
+	target_username: string | null;
 	target_type: "private" | "group" | "channel";
 	target_id: string;
 	locale: SupportedLocale;
 	events: string;
+	template_translations: unknown;
 	enabled: number;
 	created_at: number;
 };
@@ -67,36 +66,27 @@ export const listTelegramNotificationsFn = createServerFn({ method: "GET" })
 		const parameters = search
 			? [data.beforeCreatedAt, search, search, search]
 			: [data.beforeCreatedAt];
-		const [
-			countResult,
-			targetsResult,
-			botsResult,
-			templatesResult,
-			settingsResult,
-		] = await db.batch([
-			db
-				.prepare(`SELECT COUNT(*) AS total
-					FROM telegram_notification_bindings target
-					JOIN telegram_bots b ON b.id = target.bot_id ${where}`)
-				.bind(...parameters),
-			db
-				.prepare(`SELECT target.id, target.bot_id, b.name AS bot_name,
-					target.template_id, template.name AS template_name, target.name,
-					target.target_type, target.target_id, target.locale, target.events,
-					target.enabled, target.created_at
-					FROM telegram_notification_bindings target
-					JOIN telegram_bots b ON b.id = target.bot_id
-					LEFT JOIN telegram_message_templates template
-					ON template.id = target.template_id ${where}
-					ORDER BY target.created_at DESC, target.id DESC LIMIT ? OFFSET ?`)
-				.bind(...parameters, data.pageSize, data.pageIndex * data.pageSize),
-			db.prepare("SELECT id, name FROM telegram_bots ORDER BY name, id"),
-			db.prepare(`SELECT id, name, translations, enabled, created_at
-				FROM telegram_message_templates ORDER BY name`),
-			db.prepare(
-				"SELECT key, value FROM system_settings WHERE key IN ('telegram.auto_subscribe_on_start', 'telegram.default_events', 'telegram.default_template_id')",
-			),
-		]);
+		const [countResult, targetsResult, botsResult, settingsResult] =
+			await db.batch([
+				db
+					.prepare(`SELECT COUNT(*) AS total
+						FROM telegram_notification_bindings target
+						JOIN telegram_bots b ON b.id = target.bot_id ${where}`)
+					.bind(...parameters),
+				db
+					.prepare(`SELECT target.id, target.bot_id, b.name AS bot_name,
+						target.name, target.target_username, target.target_type,
+						target.target_id, target.locale, target.events,
+						target.template_translations, target.enabled, target.created_at
+						FROM telegram_notification_bindings target
+						JOIN telegram_bots b ON b.id = target.bot_id ${where}
+						ORDER BY target.created_at DESC, target.id DESC LIMIT ? OFFSET ?`)
+					.bind(...parameters, data.pageSize, data.pageIndex * data.pageSize),
+				db.prepare("SELECT id, name FROM telegram_bots ORDER BY name, id"),
+				db.prepare(
+					"SELECT key, value FROM system_settings WHERE key IN ('telegram.default_events', 'telegram.default_template_translations')",
+				),
+			]);
 		const settings = new Map(
 			(settingsResult as D1Result<{ key: string; value: string }>).results.map(
 				(row) => [row.key, row.value],
@@ -108,13 +98,15 @@ export const listTelegramNotificationsFn = createServerFn({ method: "GET" })
 					id: row.id,
 					botId: row.bot_id,
 					botName: row.bot_name,
-					templateId: row.template_id,
-					templateName: row.template_name,
 					name: row.name,
+					targetUsername: row.target_username,
 					targetType: row.target_type,
 					targetId: row.target_id,
 					locale: row.locale,
 					events: parseEvents(row.events),
+					templateTranslations: parseTelegramTemplateTranslations(
+						row.template_translations,
+					),
 					enabled: Boolean(row.enabled),
 					createdAt: new Date(row.created_at).toISOString(),
 				}),
@@ -122,21 +114,15 @@ export const listTelegramNotificationsFn = createServerFn({ method: "GET" })
 			total:
 				(countResult?.results[0] as { total: number } | undefined)?.total ?? 0,
 			bots: (botsResult as D1Result<{ id: string; name: string }>).results,
-			templates: mapTelegramTemplates(
-				(templatesResult as D1Result<TelegramTemplateRow>).results,
-			),
 			defaults: {
-				autoSubscribe: parseBooleanSetting(
-					settings.get("telegram.auto_subscribe_on_start"),
-					false,
-				),
 				events: parseEventSetting(settings.get("telegram.default_events"), [
-					"order.paid",
-					"order.expired",
+					"*",
 				]),
-				templateId: parseStringSetting(
-					settings.get("telegram.default_template_id"),
-					"telegram-template-notifications",
+				templateTranslations: parseTelegramTemplateTranslations(
+					parseSetting(
+						settings.get("telegram.default_template_translations"),
+						defaultTelegramNotificationTranslations,
+					),
 				),
 			},
 		};
@@ -144,7 +130,6 @@ export const listTelegramNotificationsFn = createServerFn({ method: "GET" })
 
 const notificationTargetInput = z.object({
 	botId: z.string().uuid(),
-	templateId: z.string().trim().min(1),
 	name: z.string().trim().min(2).max(80),
 	targetType: z.enum(["private", "group", "channel"]),
 	targetId: z
@@ -156,6 +141,7 @@ const notificationTargetInput = z.object({
 		.array(z.enum(webhookEventTypes))
 		.min(1)
 		.max(webhookEventTypes.length),
+	templateTranslations: telegramTemplateTranslationsInput,
 });
 
 export const createTelegramNotificationBindingFn = createServerFn({
@@ -168,7 +154,6 @@ export const createTelegramNotificationBindingFn = createServerFn({
 		const context = await telegramAdminContext(
 			systemPermission("telegram", "create"),
 		);
-		await requireEnabledTemplate(context.db, data.templateId);
 		const [botResult, existingResult] = await context.db.batch([
 			context.db
 				.prepare("SELECT id FROM telegram_bots WHERE id = ? LIMIT 1")
@@ -190,12 +175,12 @@ export const createTelegramNotificationBindingFn = createServerFn({
 		await context.db.batch([
 			context.db
 				.prepare(
-					"INSERT INTO telegram_notification_bindings (id, bot_id, template_id, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+					"INSERT INTO telegram_notification_bindings (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
 				)
 				.bind(
 					id,
 					data.botId,
-					data.templateId,
+					JSON.stringify(data.templateTranslations),
 					data.name,
 					data.targetType,
 					data.targetId,
@@ -209,11 +194,72 @@ export const createTelegramNotificationBindingFn = createServerFn({
 				"telegram_target.created",
 				"telegram_notification_target",
 				id,
-				{ ...data, events },
+				{
+					...data,
+					templateTranslations: "[REDACTED]",
+					events,
+				},
 				now,
 			),
 		]);
 		return { id };
+	});
+
+const notificationConfigurationInput = z.object({
+	id: z.string().uuid(),
+	locale: z.enum(supportedLocales),
+	events: z
+		.array(z.enum(webhookEventTypes))
+		.min(1)
+		.max(webhookEventTypes.length),
+	templateTranslations: telegramTemplateTranslationsInput,
+});
+
+export const updateTelegramNotificationBindingFn = createServerFn({
+	method: "POST",
+})
+	.validator((input: z.input<typeof notificationConfigurationInput>) =>
+		notificationConfigurationInput.parse(input),
+	)
+	.handler(async ({ data }) => {
+		const context = await telegramAdminContext(
+			systemPermission("telegram", "update"),
+		);
+		const current = await context.db
+			.prepare(
+				"SELECT id FROM telegram_notification_bindings WHERE id = ? LIMIT 1",
+			)
+			.bind(data.id)
+			.first<{ id: string }>();
+		requireTelegramResource(current, "notification");
+		const now = Date.now();
+		const events = [...new Set(data.events)];
+		await context.db.batch([
+			context.db
+				.prepare(
+					"UPDATE telegram_notification_bindings SET template_translations = ?, locale = ?, events = ?, updated_at = ? WHERE id = ?",
+				)
+				.bind(
+					JSON.stringify(data.templateTranslations),
+					data.locale,
+					JSON.stringify(events),
+					now,
+					data.id,
+				),
+			telegramAuditStatement(
+				context,
+				"telegram_target.updated",
+				"telegram_notification_target",
+				data.id,
+				{
+					locale: data.locale,
+					events,
+					templateTranslations: "[REDACTED]",
+				},
+				now,
+			),
+		]);
+		return { ...data, events };
 	});
 
 const notificationStateInput = z.object({
@@ -258,9 +304,8 @@ export const setTelegramNotificationEnabledFn = createServerFn({
 	});
 
 const telegramDefaultsInput = z.object({
-	autoSubscribe: z.boolean(),
 	events: z.array(z.enum(webhookEventTypes)).max(webhookEventTypes.length),
-	templateId: z.string().trim().min(1),
+	templateTranslations: telegramTemplateTranslationsInput,
 });
 
 export const updateTelegramDefaultsFn = createServerFn({ method: "POST" })
@@ -271,14 +316,13 @@ export const updateTelegramDefaultsFn = createServerFn({ method: "POST" })
 		const context = await telegramAdminContext(
 			systemPermission("telegram", "update"),
 		);
-		await requireEnabledTemplate(context.db, data.templateId);
 		const now = Date.now();
 		const events = [...new Set(data.events)];
 		await context.db.batch([
 			telegramSettingUpsert(
 				context.db,
-				"telegram.auto_subscribe_on_start",
-				data.autoSubscribe,
+				"telegram.default_template_translations",
+				data.templateTranslations,
 				context.user.id,
 				now,
 			),
@@ -289,27 +333,19 @@ export const updateTelegramDefaultsFn = createServerFn({ method: "POST" })
 				context.user.id,
 				now,
 			),
-			telegramSettingUpsert(
-				context.db,
-				"telegram.default_template_id",
-				data.templateId,
-				context.user.id,
-				now,
-			),
 			telegramAuditStatement(
 				context,
 				"telegram.defaults_updated",
 				"telegram_defaults",
 				"start",
 				{
-					autoSubscribe: data.autoSubscribe,
 					events,
-					templateId: data.templateId,
+					templateTranslations: "[REDACTED]",
 				},
 				now,
 			),
 		]);
-		return { ...data, events };
+		return { events };
 	});
 
 const notificationIdInput = z.object({ id: z.string().uuid() });
@@ -339,16 +375,6 @@ export const deleteTelegramNotificationBindingFn = createServerFn({
 		return data;
 	});
 
-async function requireEnabledTemplate(db: D1Database, id: string) {
-	const template = await db
-		.prepare(
-			"SELECT id FROM telegram_message_templates WHERE id = ? AND enabled = 1 LIMIT 1",
-		)
-		.bind(id)
-		.first<{ id: string }>();
-	return requireTelegramResource(template, "template");
-}
-
 function parseEvents(value: string) {
 	try {
 		const parsed: unknown = JSON.parse(value);
@@ -369,28 +395,17 @@ function isWebhookEventType(
 	);
 }
 
-function parseSetting(value: string | undefined): unknown {
-	if (!value) return undefined;
+function parseSetting(value: string | undefined, fallback: unknown): unknown {
+	if (!value) return fallback;
 	try {
-		const parsed: unknown = JSON.parse(value);
-		return parsed;
+		return JSON.parse(value) as unknown;
 	} catch {
-		return undefined;
+		return fallback;
 	}
 }
 
-function parseBooleanSetting(value: string | undefined, fallback: boolean) {
-	const parsed = parseSetting(value);
-	return typeof parsed === "boolean" ? parsed : fallback;
-}
-
-function parseStringSetting(value: string | undefined, fallback: string) {
-	const parsed = parseSetting(value);
-	return typeof parsed === "string" ? parsed : fallback;
-}
-
 function parseEventSetting(value: string | undefined, fallback: string[]) {
-	const parsed = parseSetting(value);
+	const parsed = parseSetting(value, fallback);
 	return Array.isArray(parsed)
 		? parsed.filter(
 				(item): item is (typeof webhookEventTypes)[number] =>

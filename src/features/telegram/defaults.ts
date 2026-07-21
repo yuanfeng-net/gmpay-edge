@@ -1,4 +1,4 @@
-import { parseTelegramTemplateTranslations } from "#/features/telegram/server/template-catalog";
+import { parseTelegramTemplateTranslations } from "#/features/telegram/template-translations";
 import type { SupportedLocale } from "#/lib/locales";
 
 export const defaultTelegramCommands = [
@@ -164,43 +164,40 @@ const defaultCommandTemplateCatalogs = [
 	contents: Record<SupportedLocale, string>;
 }>;
 
-export type DefaultTelegramTemplateCatalog = {
-	id: string;
-	name: string;
-	translations: Record<SupportedLocale, string>;
-};
+export const defaultTelegramNotificationTranslations = Object.fromEntries(
+	defaultNotificationTemplates.map((template) => [
+		template.locale,
+		template.content,
+	]),
+) as Record<SupportedLocale, string>;
 
-export const defaultTelegramTemplates: ReadonlyArray<DefaultTelegramTemplateCatalog> =
-	[
-		{
-			id: "telegram-template-notifications",
-			name: "Default notifications",
-			translations: Object.fromEntries(
-				defaultNotificationTemplates.map((template) => [
-					template.locale,
-					template.content,
-				]),
-			) as Record<SupportedLocale, string>,
-		},
-		...defaultCommandTemplateCatalogs.map((catalog) => ({
-			id: `telegram-template-command-${catalog.command}`,
-			name: catalog.name,
-			translations: catalog.contents,
-		})),
-	];
+const defaultCommandTranslations = new Map<
+	string,
+	Record<SupportedLocale, string>
+>(
+	defaultCommandTemplateCatalogs.map((catalog) => [
+		catalog.command,
+		catalog.contents,
+	]),
+);
+
+export function defaultTelegramCommandTranslations(
+	command: string,
+): Record<SupportedLocale, string> {
+	const translations = defaultCommandTranslations.get(command);
+	if (!translations)
+		throw new Error(`Unknown default Telegram command: ${command}`);
+	return translations;
+}
 
 export const defaultTelegramSettings = [
-	// /start may provision a pending private target when explicitly enabled by
-	// an administrator.  Targets are always created disabled and require a
-	// manual review before they can receive operational notifications.
-	{ key: "telegram.auto_subscribe_on_start", value: false },
 	{
 		key: "telegram.default_events",
-		value: ["order.paid", "order.expired"],
+		value: ["*"],
 	},
 	{
-		key: "telegram.default_template_id",
-		value: "telegram-template-notifications",
+		key: "telegram.default_template_translations",
+		value: defaultTelegramNotificationTranslations,
 	},
 ] as const;
 
@@ -208,61 +205,53 @@ export async function reconcileTelegramDefaults(
 	db: D1Database,
 	now = Date.now(),
 ) {
-	const existingTemplates = await db
-		.prepare("SELECT id, translations FROM telegram_message_templates")
-		.all<{ id: string; translations: unknown }>();
-	const translationsByTemplate = new Map(
-		existingTemplates.results.map((template) => [
-			template.id,
-			parseTelegramTemplateTranslations(template.translations),
+	const statements: D1PreparedStatement[] = [];
+	const [commands, settings] = await db.batch([
+		db.prepare(
+			"SELECT command, template_translations FROM telegram_bot_commands WHERE scope = 'default'",
+		),
+		db.prepare(
+			"SELECT key, value FROM system_settings WHERE key IN ('telegram.default_events', 'telegram.default_template_translations')",
+		),
+	]);
+	const existingCommands = new Map(
+		(
+			commands as D1Result<{ command: string; template_translations: unknown }>
+		).results.map((command) => [
+			command.command,
+			command.template_translations,
 		]),
 	);
-	const statements: D1PreparedStatement[] = [];
-	for (const template of defaultTelegramTemplates) {
-		const current = translationsByTemplate.get(template.id);
-		if (!current) {
-			statements.push(
-				db
-					.prepare(
-						`INSERT INTO telegram_message_templates
-						 (id, name, translations, enabled, created_at, updated_at)
-						 VALUES (?, ?, ?, 1, ?, ?)`,
-					)
-					.bind(
-						template.id,
-						template.name,
-						JSON.stringify(template.translations),
-						now,
-						now,
-					),
-			);
+	const existingSettings = new Map(
+		(settings as D1Result<{ key: string; value: string }>).results.map(
+			(setting) => [setting.key, setting.value],
+		),
+	);
+	for (const [index, command] of defaultTelegramCommands.entries()) {
+		const templateTranslations = defaultCommandTranslations.get(
+			command.command,
+		);
+		if (!templateTranslations) continue;
+		const existing = existingCommands.get(command.command);
+		if (existing) {
+			const merged = fillMissingTranslations(existing, templateTranslations);
+			if (merged)
+				statements.push(
+					db
+						.prepare(
+							"UPDATE telegram_bot_commands SET template_translations = ?, updated_at = ? WHERE command = ? AND scope = 'default'",
+						)
+						.bind(JSON.stringify(merged), now, command.command),
+				);
 			continue;
 		}
-		const translations = { ...current };
-		let changed = false;
-		for (const [locale, content] of Object.entries(template.translations)) {
-			if (translations[locale as SupportedLocale]) continue;
-			translations[locale as SupportedLocale] = content;
-			changed = true;
-		}
-		if (changed)
-			statements.push(
-				db
-					.prepare(
-						"UPDATE telegram_message_templates SET translations = ?, updated_at = ? WHERE id = ?",
-					)
-					.bind(JSON.stringify(translations), now, template.id),
-			);
-	}
-	for (const [index, command] of defaultTelegramCommands.entries()) {
-		const templateId = `telegram-template-command-${command.command}`;
 		statements.push(
 			db
 				.prepare(
 					`INSERT OR IGNORE INTO telegram_bot_commands
 					 (id, command, description_en_us, description_ja_jp, description_ko_kr,
 					  description_ru_ru, description_zh_tw, description_zh_cn, handler_type,
-					  template_id, scope, sort_order, enabled, created_at, updated_at)
+					  template_translations, scope, sort_order, enabled, created_at, updated_at)
 					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'default', ?, 1, ?, ?)`,
 				)
 				.bind(
@@ -275,14 +264,32 @@ export async function reconcileTelegramDefaults(
 					command.descriptions["zh-TW"],
 					command.descriptions["zh-CN"],
 					command.handlerType,
-					templateId,
+					JSON.stringify(templateTranslations),
 					(index + 1) * 10,
 					now,
 					now,
 				),
 		);
 	}
-	for (const setting of defaultTelegramSettings)
+	for (const setting of defaultTelegramSettings) {
+		if (
+			setting.key === "telegram.default_template_translations" &&
+			existingSettings.has(setting.key)
+		) {
+			const merged = fillMissingTranslations(
+				existingSettings.get(setting.key),
+				defaultTelegramNotificationTranslations,
+			);
+			if (merged)
+				statements.push(
+					db
+						.prepare(
+							"UPDATE system_settings SET value = ?, updated_at = ? WHERE key = ?",
+						)
+						.bind(JSON.stringify(merged), now, setting.key),
+				);
+			continue;
+		}
 		statements.push(
 			db
 				.prepare(
@@ -292,8 +299,23 @@ export async function reconcileTelegramDefaults(
 				)
 				.bind(setting.key, JSON.stringify(setting.value), now, now),
 		);
+	}
 	const results = await db.batch(statements);
 	return {
 		added: results.reduce((total, result) => total + result.meta.changes, 0),
 	};
+}
+
+function fillMissingTranslations(
+	current: unknown,
+	fallback: Record<SupportedLocale, string>,
+) {
+	const translations = parseTelegramTemplateTranslations(current);
+	let changed = false;
+	for (const [locale, content] of Object.entries(fallback)) {
+		if (translations[locale as SupportedLocale]) continue;
+		translations[locale as SupportedLocale] = content;
+		changed = true;
+	}
+	return changed ? translations : undefined;
 }

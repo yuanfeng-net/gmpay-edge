@@ -4,7 +4,6 @@ import {
 	ChartNoAxesCombined,
 	CircleDollarSign,
 	Clock3,
-	FileClock,
 	KeyRound,
 	LayoutDashboard,
 	RadioTower,
@@ -214,24 +213,10 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						systemPermission("telegram", "read"),
 					),
 					entry(
-						"telegram-users",
-						() => m.nav_telegram_bindings(),
-						"/admin/telegram/users",
-						Users,
-						systemPermission("telegram", "read"),
-					),
-					entry(
 						"telegram-notifications",
 						() => m.nav_telegram_subscriptions(),
 						"/admin/telegram/notifications",
 						Activity,
-						systemPermission("telegram", "read"),
-					),
-					entry(
-						"telegram-templates",
-						() => m.telegram_templates(),
-						"/admin/telegram/templates",
-						FileClock,
 						systemPermission("telegram", "read"),
 					),
 					entry(

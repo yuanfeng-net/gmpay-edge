@@ -493,85 +493,22 @@ describe("hot list query plans", () => {
 		).toBe(3);
 	});
 
-	it("uses created-at indexes for Telegram growth lists", async () => {
-		const bindings = await explain(
-			db,
-			`SELECT tb.id, tb.bot_id, b.name AS bot_name, tb.telegram_user_id,
-			 tb.created_at
-			 FROM telegram_bindings tb JOIN telegram_bots b ON b.id = tb.bot_id
-			 ORDER BY tb.created_at DESC, tb.id DESC LIMIT 10`,
-		);
+	it("uses the created-at index for Telegram subscriptions", async () => {
 		const targets = await explain(
 			db,
 			`SELECT target.id, target.bot_id, b.name AS bot_name,
-			 target.template_id, template.name AS template_name, target.name,
+			 target.template_translations, target.name,
 			 target.target_type, target.target_id, target.locale, target.events,
 			 target.enabled, target.created_at
 			 FROM telegram_notification_bindings target
 			 JOIN telegram_bots b ON b.id = target.bot_id
-			 LEFT JOIN telegram_message_templates template ON template.id = target.template_id
 			 ORDER BY target.created_at DESC, target.id DESC LIMIT 10`,
 		);
 
-		expect(bindings).toContain(
-			"SCAN tb USING INDEX telegram_bindings_created_idx",
-		);
 		expect(targets).toContain(
 			"SCAN target USING INDEX telegram_notifications_created_idx",
 		);
-		expect(bindings).not.toContain("USE TEMP B-TREE");
 		expect(targets).not.toContain("USE TEMP B-TREE");
-	});
-
-	it("applies Telegram binding pagination and search to the count", async () => {
-		const now = Date.now();
-		await db
-			.prepare(
-				`INSERT INTO telegram_bots
-				 (id, name, token_encrypted, webhook_secret_encrypted, created_at, updated_at)
-				 VALUES ('pagination-bot', 'Pagination Bot', 'token', 'secret', ?, ?)`,
-			)
-			.bind(now, now)
-			.run();
-		await db.batch(
-			["one", "two", "three"].map((suffix, index) =>
-				db
-					.prepare(
-						`INSERT INTO telegram_bindings
-						 (id, bot_id, telegram_user_id, created_at, updated_at)
-						 VALUES (?, 'pagination-bot', ?, ?, ?)`,
-					)
-					.bind(`binding-${suffix}`, `900${index}`, now - index, now - index),
-			),
-		);
-
-		const search = "%900%";
-		const counters = createDatastoreCounters();
-		const measuredDb = instrumentD1(db, counters);
-		const [countResult, pageResult] = await measuredDb.batch([
-			measuredDb
-				.prepare(
-					`SELECT COUNT(*) AS total
-					 FROM telegram_bindings tb JOIN telegram_bots b ON b.id = tb.bot_id
-					 WHERE tb.telegram_user_id LIKE ? OR b.name LIKE ?`,
-				)
-				.bind(search, search),
-			measuredDb
-				.prepare(
-					`SELECT tb.id
-					 FROM telegram_bindings tb JOIN telegram_bots b ON b.id = tb.bot_id
-					 WHERE tb.telegram_user_id LIKE ? OR b.name LIKE ?
-					 ORDER BY tb.created_at DESC, tb.id DESC LIMIT ? OFFSET ?`,
-				)
-				.bind(search, search, 1, 1),
-		]);
-		const count = countResult?.results?.[0] as { total: number } | undefined;
-		const page = pageResult as D1Result<{ id: string }>;
-
-		expect(count?.total).toBe(3);
-		expect(page.results).toEqual([{ id: "binding-two" }]);
-		expect(counters.d1Prepare).toBe(2);
-		expect(counters.d1Batch).toBe(1);
 	});
 
 	it("returns Telegram notification targets and exact totals in one batch", async () => {
@@ -589,9 +526,9 @@ describe("hot list query plans", () => {
 				db
 					.prepare(
 						`INSERT INTO telegram_notification_bindings
-						 (id, bot_id, name, target_type, target_id, locale, events, enabled,
+						 (id, bot_id, template_translations, name, target_type, target_id, locale, events, enabled,
 						  created_at, updated_at)
-						 VALUES (?, 'target-pagination-bot', ?, 'private', ?, 'en-US', '[]', 1, ?, ?)`,
+						 VALUES (?, 'target-pagination-bot', '{}', ?, 'private', ?, 'en-US', '[]', 1, ?, ?)`,
 					)
 					.bind(
 						`target-pagination-${suffix}`,
@@ -632,51 +569,6 @@ describe("hot list query plans", () => {
 		expect(page.results).toEqual([{ id: "target-pagination-two" }]);
 		expect(counters.d1Prepare).toBe(2);
 		expect(counters.d1Batch).toBe(1);
-	});
-
-	it("keeps Telegram binding pages stable across newer inserts", async () => {
-		const snapshot = Date.now();
-		await db.batch(
-			["a", "b", "c"].map((suffix, index) =>
-				db
-					.prepare(
-						`INSERT INTO telegram_bindings
-						 (id, bot_id, telegram_user_id, created_at, updated_at)
-						 VALUES (?, 'pagination-bot', ?, ?, ?)`,
-					)
-					.bind(
-						`stable-binding-${suffix}`,
-						`910${index}`,
-						snapshot - index,
-						snapshot - index,
-					),
-			),
-		);
-		const before = await db
-			.prepare(
-				`SELECT id FROM telegram_bindings
-				 WHERE created_at <= ?
-				 ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-			)
-			.bind(snapshot, 1, 1)
-			.all<{ id: string }>();
-		await db
-			.prepare(
-				`INSERT INTO telegram_bindings
-				 (id, bot_id, telegram_user_id, created_at, updated_at)
-				 VALUES ('stable-binding-new', 'pagination-bot', '9199', ?, ?)`,
-			)
-			.bind(snapshot + 1, snapshot + 1)
-			.run();
-		const after = await db
-			.prepare(
-				`SELECT id FROM telegram_bindings
-				 WHERE created_at <= ?
-				 ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-			)
-			.bind(snapshot, 1, 1)
-			.all<{ id: string }>();
-		expect(after.results).toEqual(before.results);
 	});
 
 	it("uses the webhook delivery index for the admin history order", async () => {

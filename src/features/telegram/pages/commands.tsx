@@ -25,7 +25,6 @@ import {
 	type TelegramCommandRecord,
 	updateTelegramCommandFn,
 } from "#/features/telegram/server/commands-admin";
-import type { TelegramTemplateRecord } from "#/features/telegram/server/template-catalog";
 import { PageHeader } from "#/layouts/components/page-header";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
@@ -39,7 +38,6 @@ import {
 } from "./form-fields";
 
 type CommandConfiguration = {
-	templates: TelegramTemplateRecord[];
 	botCount: number;
 };
 
@@ -50,7 +48,6 @@ export function TelegramCommandsPage() {
 	const client = useQueryClient();
 	const [refreshKey, setRefreshKey] = useState(0);
 	const [configuration, setConfiguration] = useState<CommandConfiguration>({
-		templates: [],
 		botCount: 0,
 	});
 	const [editing, setEditing] = useState<TelegramCommandRecord | null>(null);
@@ -83,7 +80,6 @@ export function TelegramCommandsPage() {
 				queryFn: () => listTelegramCommandsFn({ data: input }),
 			});
 			setConfiguration({
-				templates: result.templates,
 				botCount: result.botCount,
 			});
 			return { data: result.data, total: result.total };
@@ -136,11 +132,6 @@ export function TelegramCommandsPage() {
 				header: m.telegram_command(),
 				meta: { search: true },
 				cell: ({ row }) => <code>/{row.original.command}</code>,
-			},
-			{
-				accessorKey: "handlerType",
-				header: m.telegram_handler(),
-				cell: ({ row }) => telegramOptionLabel(row.original.handlerType),
 			},
 			{
 				accessorKey: "scope",
@@ -203,10 +194,7 @@ export function TelegramCommandsPage() {
 							<Send />
 							{m.telegram_sync_commands()}
 						</ProButton>
-						<CreateCommand
-							templates={configuration.templates}
-							onCreated={refresh}
-						/>
+						<CreateCommand onCreated={refresh} />
 					</div>
 				}
 			/>
@@ -228,14 +216,15 @@ export function TelegramCommandsPage() {
 				}}
 				title={m.common_edit()}
 				description={m.telegram_commands_description()}
-				schema={commandFormSchema(configuration.templates)}
+				schema={commandFormSchema()}
 				initialValues={
 					editing
 						? {
 								command: editing.command,
 								descriptions: JSON.stringify(commandDescriptions(editing)),
-								handlerType: editing.handlerType,
-								templateId: editing.templateId ?? "",
+								templateTranslations: JSON.stringify(
+									editing.templateTranslations,
+								),
 								scope: editing.scope,
 								sortOrder: editing.sortOrder,
 							}
@@ -253,24 +242,18 @@ export function TelegramCommandsPage() {
 	);
 }
 
-function CreateCommand({
-	templates,
-	onCreated,
-}: {
-	templates: TelegramTemplateRecord[];
-	onCreated: () => Promise<unknown>;
-}) {
+function CreateCommand({ onCreated }: { onCreated: () => Promise<unknown> }) {
 	return (
 		<ModalForm
 			title={m.common_new()}
 			description={m.telegram_add_command_description()}
 			trigger={<ProButton>{m.common_new()}</ProButton>}
-			schema={commandFormSchema(templates)}
+			schema={commandFormSchema()}
 			initialValues={{
 				scope: "default",
 				sortOrder: 100,
-				handlerType: "template",
 				descriptions: JSON.stringify(emptyTemplateTranslations()),
+				templateTranslations: JSON.stringify(emptyTemplateTranslations()),
 			}}
 			onFinish={async (values) => {
 				const result = await createTelegramCommandFn({

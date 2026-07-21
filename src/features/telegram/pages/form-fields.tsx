@@ -15,7 +15,6 @@ import {
 } from "#/components/ui/dropdown-menu";
 import { telegramOperationErrorMessage } from "#/features/telegram/error-message";
 import type { TelegramCommandRecord } from "#/features/telegram/server/commands-admin";
-import type { TelegramTemplateRecord } from "#/features/telegram/server/template-catalog";
 import { renderTelegramTemplate } from "#/features/telegram/template";
 import { webhookEventTypes } from "#/features/webhooks/types";
 import {
@@ -34,11 +33,6 @@ export function telegramOptionLabel(value: string) {
 		private: m.telegram_target_private(),
 		group: m.telegram_target_group(),
 		channel: m.telegram_target_channel(),
-		start: m.telegram_handler_start(),
-		help: m.telegram_handler_help(),
-		new: m.telegram_handler_new(),
-		status: m.telegram_handler_status(),
-		template: m.telegram_handler_template(),
 		default: m.telegram_scope_default(),
 		admin: m.telegram_scope_admin(),
 	};
@@ -104,13 +98,7 @@ export function telegramCommandValues(values: Record<string, unknown>) {
 		descriptionRuRu: descriptions["ru-RU"],
 		descriptionZhTw: descriptions["zh-TW"],
 		descriptionZhCn: descriptions["zh-CN"],
-		handlerType: String(values.handlerType ?? "template") as
-			| "start"
-			| "help"
-			| "new"
-			| "status"
-			| "template",
-		templateId: String(values.templateId ?? "") || null,
+		templateTranslations: templateTranslations(values.templateTranslations),
 		scope: String(values.scope ?? "default") as
 			| "default"
 			| "private"
@@ -120,7 +108,7 @@ export function telegramCommandValues(values: Record<string, unknown>) {
 	};
 }
 
-export function commandFormSchema(templates: TelegramTemplateRecord[]) {
+export function commandFormSchema() {
 	return [
 		{ name: "command", label: m.telegram_command(), required: true },
 		{
@@ -137,28 +125,7 @@ export function commandFormSchema(templates: TelegramTemplateRecord[]) {
 				/>
 			),
 		},
-		{
-			name: "handlerType",
-			label: m.telegram_handler(),
-			valueType: "select" as const,
-			required: true,
-			fieldProps: {
-				options: ["start", "help", "new", "status", "template"].map(
-					(value) => ({ label: telegramOptionLabel(value), value }),
-				),
-			},
-		},
-		{
-			name: "templateId",
-			label: m.telegram_templates(),
-			valueType: "select" as const,
-			fieldProps: {
-				options: templates.map((template) => ({
-					label: template.name,
-					value: template.id,
-				})),
-			},
-		},
+		templateContentFormField("templateTranslations"),
 		{
 			name: "scope",
 			label: m.telegram_scope(),
@@ -181,25 +148,24 @@ export function commandFormSchema(templates: TelegramTemplateRecord[]) {
 	];
 }
 
-export function templateFormSchema() {
-	return [
-		{ name: "name", label: m.common_name(), required: true },
-		{
-			name: "translations",
-			label: m.telegram_template_content(),
-			required: true,
-			description: m.telegram_template_variables(),
-			render: (field: {
-				value: unknown;
-				onChange: (value: string) => void;
-			}) => (
-				<TemplateTranslationsEditor
-					value={templateTranslations(field.value)}
-					onChange={(value) => field.onChange(JSON.stringify(value))}
-				/>
-			),
-		},
-	];
+export function templateContentFormField(
+	name = "translations",
+	showDescription = true,
+) {
+	return {
+		name,
+		label: m.telegram_template_content(),
+		required: true,
+		...(showDescription
+			? { description: m.telegram_template_variables() }
+			: {}),
+		render: (field: { value: unknown; onChange: (value: string) => void }) => (
+			<TemplateTranslationsEditor
+				value={templateTranslations(field.value)}
+				onChange={(value) => field.onChange(JSON.stringify(value))}
+			/>
+		),
+	};
 }
 
 function TelegramTemplatePreview({ content }: { content: string }) {
