@@ -379,6 +379,8 @@
 	"settings_max_expiry_description": "Maximum expiry accepted by order APIs",
 	"settings_late_payment_policy": "Late payment policy",
 	"settings_late_payment_policy_description": "How funds arriving after expiry should be handled",
+	"settings_checkout_amount_decimals": "Checkout payment decimals",
+	"settings_checkout_amount_decimals_description": "2–8 decimals, default 4. Payable amounts round up and collisions use the same visible step",
 	"settings_allowed_hosts": "Allowed Hosts",
 	"settings_allowed_hosts_description": "Deployment and custom hosts accepted by this instance. Enter one host per line without http://, https://, or a path; ports are optional",
 	"settings_webhook_attempts": "Maximum webhook attempts",

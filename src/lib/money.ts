@@ -29,6 +29,27 @@ export function unitsToDecimal(value: bigint, decimals: number): string {
 	return fraction ? `${whole}.${fraction}` : whole;
 }
 
+export function quantizeUnitsUp(
+	value: bigint,
+	decimals: number,
+	maximumDecimals: number,
+) {
+	if (value < 0n) throw new RangeError("Amount cannot be negative");
+	if (!Number.isInteger(decimals) || decimals < 0 || decimals > 30)
+		throw new RangeError("Invalid decimals");
+	if (
+		!Number.isInteger(maximumDecimals) ||
+		maximumDecimals < 0 ||
+		maximumDecimals > 30
+	)
+		throw new RangeError("Invalid maximum decimals");
+	const stepUnits = 10n ** BigInt(Math.max(0, decimals - maximumDecimals));
+	return {
+		stepUnits,
+		amountUnits: ((value + stepUnits - 1n) / stepUnits) * stepUnits,
+	};
+}
+
 export function convertByRate(
 	amount: string,
 	amountDecimals: number,

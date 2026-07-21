@@ -364,7 +364,23 @@ function ReceivingConfigurationFields({
 		new Map(
 			available.map((method) => [
 				method.rail_code,
-				{ label: method.rail_name, value: method.rail_code },
+				{
+					label:
+						method.rail_kind === "chain" ? (
+							<NetworkLabel
+								displayName={method.rail_name}
+								network={method.rail_code}
+							/>
+						) : (
+							<ProviderLabel
+								kind={method.rail_kind}
+								name={method.rail_name}
+								provider={method.rail_code}
+							/>
+						),
+					searchText: `${method.rail_name} ${method.rail_code}`,
+					value: method.rail_code,
+				},
 			]),
 		).values(),
 	);

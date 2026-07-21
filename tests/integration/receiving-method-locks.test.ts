@@ -145,7 +145,7 @@ describe("receiving method allocation and immutable snapshots", () => {
 		);
 	});
 
-	it("allocates the next atomic amount for a concurrent same-value order", async () => {
+	it("allocates the next visibly distinct amount for a concurrent order", async () => {
 		await expect(
 			allocateUniqueReceivingMethodAndSnapshot(db, {
 				orderId: "order-b",
@@ -160,8 +160,8 @@ describe("receiving method allocation and immutable snapshots", () => {
 				existingOrder: { expectedVersion: 0 },
 			}),
 		).resolves.toMatchObject({
-			expectedAmountUnits: "1000001",
-			paymentAmount: "1.000001",
+			expectedAmountUnits: "1000100",
+			paymentAmount: "1.0001",
 		});
 		const order = await db
 			.prepare("SELECT version FROM orders WHERE id = 'order-b'")

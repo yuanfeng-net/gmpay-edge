@@ -1,3 +1,6 @@
+import { loadCheckoutAmountDecimals } from "#/features/settings/server/system-settings";
+import { quantizeUnitsUp, unitsToDecimal } from "#/lib/money";
+
 export type PaymentAllocationInput = {
 	orderId: string;
 	receivingMethodId: string;
@@ -55,7 +58,12 @@ export async function allocateUniqueReceivingMethodAndSnapshot(
 		maximumAttempts?: number;
 	},
 ) {
-	const base = parseAmountUnits(input.expectedAmountUnits);
+	const configuredDecimals = await loadCheckoutAmountDecimals(db);
+	const quantized = quantizeUnitsUp(
+		parseAmountUnits(input.expectedAmountUnits),
+		input.decimals,
+		configuredDecimals,
+	);
 	const maximumAttempts = Math.max(
 		1,
 		Math.min(input.maximumAttempts ?? 100, 1_000),
@@ -66,8 +74,10 @@ export async function allocateUniqueReceivingMethodAndSnapshot(
 		...allocationInput
 	} = input;
 	for (let offset = 0; offset < maximumAttempts; offset++) {
-		const expectedAmountUnits = (base + BigInt(offset)).toString();
-		const paymentAmount = unitsToDecimal(base + BigInt(offset), decimals);
+		const amountUnits =
+			quantized.amountUnits + BigInt(offset) * quantized.stepUnits;
+		const expectedAmountUnits = amountUnits.toString();
+		const paymentAmount = unitsToDecimal(amountUnits, decimals);
 		try {
 			const allocated = await allocateReceivingMethodAndSnapshot(db, {
 				...allocationInput,
@@ -394,5 +404,3 @@ function assertAmountLimits(
 			"above_maximum",
 		);
 }
-
-import { unitsToDecimal } from "#/lib/money";

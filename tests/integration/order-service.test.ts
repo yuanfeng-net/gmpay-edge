@@ -179,7 +179,7 @@ describe("merchant order service on D1", () => {
 			},
 			"https://pay.example.test/payments/gmpay/v1/order/create-transaction",
 		);
-		expect(created.paymentAmount).toBe("33.333334");
+		expect(created.paymentAmount).toBe("33.3334");
 	});
 
 	it("enforces the configured maximum order expiry", async () => {
@@ -207,7 +207,7 @@ describe("merchant order service on D1", () => {
 			.run();
 	});
 
-	it("serializes concurrent allocation and assigns distinct atomic amounts", async () => {
+	it("serializes concurrent allocation with visibly distinct amounts", async () => {
 		const create = (externalOrderId: string) =>
 			createOrder(
 				db,
@@ -237,12 +237,12 @@ describe("merchant order service on D1", () => {
 		expect(reserved?.count).toBe(1);
 		const locks = await db
 			.prepare(
-				`SELECT expected_amount_units FROM receiving_method_locks WHERE released_at IS NULL AND expected_amount_units IN ('2000000', '2000001') ORDER BY expected_amount_units`,
+				`SELECT expected_amount_units FROM receiving_method_locks WHERE released_at IS NULL AND expected_amount_units IN ('2000000', '2000100') ORDER BY expected_amount_units`,
 			)
 			.all<{ expected_amount_units: string }>();
 		expect(locks.results.map((lock) => lock.expected_amount_units)).toEqual([
 			"2000000",
-			"2000001",
+			"2000100",
 		]);
 	});
 });

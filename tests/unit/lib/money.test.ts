@@ -3,6 +3,7 @@ import {
 	convertByRate,
 	decimalToUnits,
 	divideByRate,
+	quantizeUnitsUp,
 	unitsToDecimal,
 } from "#/lib/money";
 
@@ -17,4 +18,14 @@ describe("money", () => {
 		expect(convertByRate("10.00", 2, "0.333333", 6, 6)).toBe("3.33333"));
 	it("divides by a base-to-quote rate and rounds payment up", () =>
 		expect(divideByRate("100.00", 2, "3.000000", 6, 6)).toBe("33.333334"));
+	it("quantizes payment units upward without floating point", () => {
+		expect(quantizeUnitsUp(14_925_374n, 6, 4)).toEqual({
+			amountUnits: 14_925_400n,
+			stepUnits: 100n,
+		});
+		expect(quantizeUnitsUp(123n, 2, 4)).toEqual({
+			amountUnits: 123n,
+			stepUnits: 1n,
+		});
+	});
 });

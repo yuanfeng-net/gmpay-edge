@@ -86,8 +86,8 @@ describe("checkout receiving method selection", () => {
 			paymentAmount: "12.5",
 		});
 		expect(selectCounters).toMatchObject({
-			d1Prepare: 18,
-			d1StatementFirst: 5,
+			d1Prepare: 19,
+			d1StatementFirst: 6,
 			d1StatementAll: 5,
 			d1StatementRun: 2,
 			d1Batch: 2,

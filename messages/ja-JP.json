@@ -379,6 +379,8 @@
   "settings_max_expiry_description": "注文 API で受け入れられる最大有効期限",
   "settings_late_payment_policy": "支払い遅延ポリシー",
   "settings_late_payment_policy_description": "有効期限後に到着した資金はどのように扱われるべきか",
+  "settings_checkout_amount_decimals": "チェックアウト支払額の小数桁数",
+  "settings_checkout_amount_decimals_description": "2～8桁、既定値は4桁です。支払額を切り上げ、金額の競合にも同じ表示単位を使用します",
   "settings_allowed_hosts": "許可されたホスト",
   "settings_allowed_hosts_description": "このインスタンスによって受け入れられるデプロイメントおよびカスタム ホスト。 http://、https://、またはパスを付けずに、1 行に 1 つのホストを入力します。ポートはオプションです",
   "settings_webhook_attempts": "Webhook 試行の最大数",

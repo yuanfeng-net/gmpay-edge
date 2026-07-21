@@ -32,6 +32,8 @@ const fields: Record<
 		type: "text" | "password" | "number" | "select" | "origins";
 		required?: boolean;
 		options?: string[];
+		min?: number;
+		max?: number;
 	}>
 > = {
 	general: [
@@ -53,6 +55,14 @@ const fields: Record<
 			description: m.settings_late_payment_policy_description(),
 			type: "select",
 			options: ["accept", "review", "reject"],
+		},
+		{
+			key: "payments.checkout_amount_decimals",
+			label: m.settings_checkout_amount_decimals(),
+			description: m.settings_checkout_amount_decimals_description(),
+			type: "number",
+			min: 2,
+			max: 8,
 		},
 	],
 	security: [
@@ -225,7 +235,11 @@ function sectionForGroup(group: SettingsGroup): Section {
 }
 function groupForSetting(key: SettingKey): SettingsGroup {
 	if (key.startsWith("orders.")) return "orders";
-	if (key === "payments.late_payment_policy") return "payment";
+	if (
+		key === "payments.late_payment_policy" ||
+		key === "payments.checkout_amount_decimals"
+	)
+		return "payment";
 	if (key === "security.allowed_hosts") return "access";
 	if (key.startsWith("webhooks.")) return "webhook";
 	if (key === "runtime.better_auth_secret" || key === "runtime.better_auth_url")
@@ -281,6 +295,8 @@ function settingsSchema(
 			fieldProps = {
 				inputMode: "numeric",
 				suffix: displaySettingUnit(field.key),
+				...(field.min == null ? {} : { min: field.min }),
+				...(field.max == null ? {} : { max: field.max }),
 			};
 		else if (field.type === "password" && configuredSecrets.get(field.key))
 			fieldProps = { placeholder: m.settings_secret_configured() };

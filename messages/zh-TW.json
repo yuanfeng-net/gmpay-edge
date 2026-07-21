@@ -379,6 +379,8 @@
 	"settings_max_expiry_description": "訂單 API 接受的最長有效時間",
 	"settings_late_payment_policy": "逾期付款策略",
 	"settings_late_payment_policy_description": "訂單過期後到帳資金的處理方式",
+	"settings_checkout_amount_decimals": "收銀台付款金額小數位",
+	"settings_checkout_amount_decimals_description": "可設定 2–8 位，預設 4 位；應付金額向上對齊，金額衝突也按相同的可見步長遞增",
 	"settings_allowed_hosts": "Allowed Hosts",
 	"settings_allowed_hosts_description": "本實例接受的部署和自訂主機；每行填寫一個，不要包含 http://、https:// 或路徑，可選連接埠",
 	"settings_webhook_attempts": "Webhook 最大嘗試次數",

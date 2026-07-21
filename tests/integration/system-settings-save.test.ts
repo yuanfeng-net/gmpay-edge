@@ -1,7 +1,10 @@
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadSiteBrand } from "#/features/settings/server/site-brand";
-import { saveSystemSettings } from "#/features/settings/server/system-settings";
+import {
+	loadCheckoutAmountDecimals,
+	saveSystemSettings,
+} from "#/features/settings/server/system-settings";
 import { loadOperationalSettings } from "#/server/operational-settings";
 import { applyMigrations } from "./migrations";
 
@@ -30,7 +33,7 @@ describe("system settings persistence", () => {
 	beforeEach(async () => {
 		await db.batch([
 			db.prepare(
-				"DELETE FROM system_settings WHERE key IN ('site.name', 'site.default_locale', 'orders.default_expiry_ms', 'runtime.api_key_pepper', 'runtime.integration_config_secret')",
+				"DELETE FROM system_settings WHERE key IN ('site.name', 'site.default_locale', 'orders.default_expiry_ms', 'payments.checkout_amount_decimals', 'runtime.api_key_pepper', 'runtime.integration_config_secret')",
 			),
 			db.prepare(
 				"DELETE FROM audit_logs WHERE action = 'system_settings.updated'",
@@ -82,6 +85,27 @@ describe("system settings persistence", () => {
 			name: "Updated Edge",
 			defaultLocale: "zh-CN",
 		});
+	});
+
+	it("loads the configured checkout payment precision with a safe default", async () => {
+		await expect(loadCheckoutAmountDecimals(db)).resolves.toBe(4);
+		await saveSystemSettings(
+			[{ key: "payments.checkout_amount_decimals", value: 6 }],
+			dependencies(),
+		);
+		await expect(loadCheckoutAmountDecimals(db)).resolves.toBe(6);
+		await db
+			.prepare(
+				"UPDATE system_settings SET value = '99' WHERE key = 'payments.checkout_amount_decimals'",
+			)
+			.run();
+		await expect(loadCheckoutAmountDecimals(db)).resolves.toBe(4);
+		await expect(
+			saveSystemSettings(
+				[{ key: "payments.checkout_amount_decimals", value: 1 }],
+				dependencies(),
+			),
+		).rejects.toBeInstanceOf(Error);
 	});
 
 	it("preserves configured secrets and rejects unknown or duplicate keys", async () => {

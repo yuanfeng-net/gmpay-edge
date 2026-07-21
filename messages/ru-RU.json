@@ -379,6 +379,8 @@
   "settings_max_expiry_description": "Максимальный срок действия, принимаемый API заказов",
   "settings_late_payment_policy": "Политика просроченной оплаты",
   "settings_late_payment_policy_description": "Как следует обращаться со средствами, поступившими после истечения срока действия",
+  "settings_checkout_amount_decimals": "Десятичные знаки суммы оплаты",
+  "settings_checkout_amount_decimals_description": "От 2 до 8 знаков, по умолчанию 4. Сумма округляется вверх; при конфликтах используется тот же видимый шаг",
   "settings_allowed_hosts": "Разрешенные хосты",
   "settings_allowed_hosts_description": "Развертываемые и пользовательские хосты, принятые этим экземпляром. Введите по одному хосту в каждой строке без http://, https:// или пути; порты не являются обязательными",
   "settings_webhook_attempts": "Максимальное количество попыток вебхука",

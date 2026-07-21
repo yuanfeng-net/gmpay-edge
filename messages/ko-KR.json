@@ -379,6 +379,8 @@
   "settings_max_expiry_description": "주문 API에서 허용하는 최대 만료일",
   "settings_late_payment_policy": "연체 정책",
   "settings_late_payment_policy_description": "만료 후 도착하는 자금을 처리하는 방법",
+  "settings_checkout_amount_decimals": "결제 금액 소수 자릿수",
+  "settings_checkout_amount_decimals_description": "2~8자리, 기본값은 4자리입니다. 지불 금액을 올림하고 금액 충돌에도 동일한 표시 단위를 사용합니다",
   "settings_allowed_hosts": "허용된 호스트",
   "settings_allowed_hosts_description": "이 인스턴스에서 허용되는 배포 및 사용자 지정 호스트입니다. http://, https:// 또는 경로 없이 호스트를 한 줄에 하나씩 입력하세요. 포트는 선택 사항입니다",
   "settings_webhook_attempts": "최대 웹훅 시도 횟수",

@@ -10,6 +10,9 @@ import { supportedLocales } from "#/lib/locales";
 
 export type SettingValue = string | number | boolean | string[];
 
+export const defaultCheckoutAmountDecimals = 4;
+const checkoutAmountDecimalsSchema = z.number().int().min(2).max(8);
+
 const definitions = {
 	"site.name": z.string().trim().min(1).max(80),
 	"site.default_locale": z.enum(supportedLocales),
@@ -30,6 +33,7 @@ const definitions = {
 	"orders.default_expiry_ms": z.number().int().min(60_000).max(86_400_000),
 	"orders.max_expiry_ms": z.number().int().min(300_000).max(604_800_000),
 	"payments.late_payment_policy": z.enum(["accept", "review", "reject"]),
+	"payments.checkout_amount_decimals": checkoutAmountDecimalsSchema,
 	"security.allowed_hosts": z
 		.array(
 			z
@@ -81,6 +85,7 @@ const defaults: Record<SettingKey, SettingValue> = {
 	"orders.default_expiry_ms": 900_000,
 	"orders.max_expiry_ms": 86_400_000,
 	"payments.late_payment_policy": "review",
+	"payments.checkout_amount_decimals": defaultCheckoutAmountDecimals,
 	"security.allowed_hosts": [],
 	"webhooks.max_attempts": 8,
 	"webhooks.timeout_ms": 10_000,
@@ -165,6 +170,22 @@ export async function saveSystemSettings(
 	if (parsed.some(({ key }) => key.startsWith("site.")))
 		await invalidateSiteBrandCache(dependencies.cache);
 	return { updated: parsed.map((item) => item.key) };
+}
+
+export async function loadCheckoutAmountDecimals(db: D1Database) {
+	const row = await db
+		.prepare("SELECT value FROM system_settings WHERE key = ? LIMIT 1")
+		.bind("payments.checkout_amount_decimals")
+		.first<{ value: string }>();
+	if (!row) return defaultCheckoutAmountDecimals;
+	try {
+		const parsed = checkoutAmountDecimalsSchema.safeParse(
+			JSON.parse(row.value),
+		);
+		return parsed.success ? parsed.data : defaultCheckoutAmountDecimals;
+	} catch {
+		return defaultCheckoutAmountDecimals;
+	}
 }
 
 function parseStored(value: string, fallback: SettingValue): SettingValue {
